@@ -202,8 +202,11 @@ class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
     def release_url(self) -> str | None:
         return self._device.firmware_release_url
 
+    async def async_install(self, **kwargs: Any) -> None:
+        return None
+
     def release_notes(self) -> str | None:
-        return "Firmware updates must be performed through the Phyn app."
+        return "Upgrade can take up to five minutes"
 
 
 class PhynSwitchEntity(PhynEntity, SwitchEntity):

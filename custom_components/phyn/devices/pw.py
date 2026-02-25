@@ -75,7 +75,7 @@ class PhynWaterSensorDevice(PhynDevice):
             PhynAlertSensor(self, "low_temperature_alert", "Low Temperature Alert", "low_temperature"),
             PhynAlertSensor(self, "water_detected_alert", "Water Detected Alert", "water_detected"),
             self._battery_entity,
-            PhynFirwmwareUpdateEntity(self),
+            PhynFirmwareUpdateEntity(self),
             self._humidity_entity,
             self._temperature_entity,
         ]

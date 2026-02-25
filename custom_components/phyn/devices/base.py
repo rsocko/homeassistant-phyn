@@ -69,21 +69,37 @@ class PhynDevice:
 
     @property
     def firmware_has_update(self) -> bool | None:
-        """Return if the firmware has an update"""
+        """Return if the firmware has an update.
+
+        Firmware versions are integer build numbers (e.g., 40809001).
+        The firmware endpoint returns fw_version as int, while device
+        state returns it as a string.
+        """
         if "fw_version" not in self._firmware_info:
             return None
         fw_version = self._firmware_info.get("fw_version")
         device_fw = self._device_state.get("fw_version")
         if fw_version and device_fw:
-            return int(fw_version) > int(device_fw)
+            try:
+                return int(fw_version) > int(device_fw)
+            except (ValueError, TypeError):
+                LOGGER.warning(
+                    "Could not compare firmware versions: server=%s device=%s",
+                    fw_version, device_fw,
+                )
+                return False
         return False
 
     @property
     def firmware_latest_version(self) -> str | None:
-        """Return the latest available firmware version"""
+        """Return the latest available firmware version.
+
+        Firmware endpoint returns fw_version as int; convert to str
+        for consistent comparison with firmware_version (from device state).
+        """
         if "fw_version" not in self._firmware_info:
             return None
-        return self._firmware_info["fw_version"]
+        return str(self._firmware_info["fw_version"])
 
     @property
     def firmware_release_url(self) -> str | None:
@@ -136,9 +152,11 @@ class PhynDevice:
         pass
 
     async def _update_firmware_information(self, *_) -> None:
-        self._firmware_info.update(
-            (await self._coordinator.api_client.device.get_latest_firmware_info(self._phyn_device_id))[0]
-        )
+        firmware_list = await self._coordinator.api_client.device.get_latest_firmware_info(self._phyn_device_id)
+        if firmware_list and isinstance(firmware_list, list) and len(firmware_list) > 0:
+            self._firmware_info.update(firmware_list[0])
+        elif isinstance(firmware_list, dict):
+            self._firmware_info.update(firmware_list)
         LOGGER.debug("%s firmware: %s", self.device_name, self._firmware_info)
 
     def has_active_alert(self, alert_type: str) -> bool:

@@ -14,7 +14,7 @@ from ..entities.base import (
     PhynAlertSensor,
     PhynDailyUsageSensor,
     PhynFirmwareUpdateAvailableSensor,
-    PhynFirwmwareUpdateEntity,
+    PhynFirmwareUpdateEntity,
     PhynPressureSensor,
     PhynTemperatureSensor,
 )
@@ -72,7 +72,6 @@ class PhynPlusDevice(PhynDevice):
             }
         }
         self._auto_shutoff: dict[str, Any] = {}
-        self._away_mode: dict[str, Any] = {}
         self._water_usage: dict[str, Any] = {}
         self._last_known_valve_state: bool = True
         self._latest_health_test: dict[str, Any] | None = None
@@ -96,7 +95,7 @@ class PhynPlusDevice(PhynDevice):
             PhynCurrentFlowRateSensor(self),
             PhynConsumptionSensor(self),
             PhynFirmwareUpdateAvailableSensor(self),
-            PhynFirwmwareUpdateEntity(self),
+            PhynFirmwareUpdateEntity(self),
             PhynLeakTestLeakDetected(self),
             PhynLeakTestSensor(self),
             PhynLeakTestWarning(self),
@@ -253,10 +252,14 @@ class PhynPlusDevice(PhynDevice):
             return None
         return self._device_preferences["leak_sensitivity_away_mode"]["value"] == "true"
 
-    async def set_device_preference(self, name: str, val: bool) -> None:
-        """Set Device Preference"""
+    async def set_device_preference(self, name: str, val: str) -> None:
+        """Set Device Preference.
+
+        :param name: Preference name (leak_sensitivity_away_mode or scheduler_enable)
+        :param val: Preference value as string ("true" or "false")
+        """
         if name not in ["leak_sensitivity_away_mode", "scheduler_enable"]:
-            LOGGER.debug("Tried setting preference for %s but not avialable", name)
+            LOGGER.debug("Tried setting preference for %s but not available", name)
             return None
         if val not in ["true", "false"]:
             return None
@@ -297,15 +300,9 @@ class PhynPlusDevice(PhynDevice):
     
     async def _update_autoshutoff(self, *_) -> None:
         """Update auto shutoff status"""
-        data = await self._coordinator.api_client.device.get_autoshuftoff_status(self._phyn_device_id)
+        data = await self._coordinator.api_client.device.get_autoshutoff_status(self._phyn_device_id)
         LOGGER.debug("Autoshutoff info: %s" % data)
         self._auto_shutoff.update(data)
-    
-    async def _update_away_mode(self, *_) -> None:
-        """Update the away mode data from the API"""
-        self._away_mode = await self._coordinator.api_client.device.get_away_mode(
-            self._phyn_device_id
-        )
 
     async def _update_device_preferences(self, *_) -> None:
         """Update the device preferences from the API"""

@@ -34,7 +34,7 @@ from ..entities.base import (
     PhynAlertSensor,
     PhynDailyUsageSensor,
     PhynFirmwareUpdateAvailableSensor,
-    PhynFirwmwareUpdateEntity,
+    PhynFirmwareUpdateEntity,
     PhynTemperatureSensor,
     PhynPressureSensor,
 )
@@ -87,7 +87,7 @@ class PhynClassicDevice(PhynDevice):
             PhynAlertSensor(self, "alert_temperature", "Temperature Alert", "alert_temperature"),
             PhynDailyUsageSensor(self),
             PhynFirmwareUpdateAvailableSensor(self),
-            PhynFirwmwareUpdateEntity(self),
+            PhynFirmwareUpdateEntity(self),
             PhynTemperatureSensor(self, "temperature1", "Average hot water temperature", "temperature1"),
             PhynTemperatureSensor(self, "temperature2", "Average cold water temperature", "temperature2"),
             PhynPressureSensor(self, "pressure1", "Average hot water pressure", "current_psi1"),
