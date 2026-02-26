@@ -55,3 +55,17 @@ import_fixture_statistics:
       required: false
       selector:
         datetime:
+    force_reimport:
+      name: Force reimport
+      description: Clear existing fixture stats for the target device(s) and rebuild from the requested timeframe
+      required: false
+      default: false
+      selector:
+        boolean:
+    dry_run:
+      name: Dry run
+      description: Preview what would be imported/cleared without changing statistics or checkpoint state
+      required: false
+      default: false
+      selector:
+        boolean:

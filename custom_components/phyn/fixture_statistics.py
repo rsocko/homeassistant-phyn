@@ -132,6 +132,71 @@ class PhynFixtureStatisticsImporter:
         if isinstance(last_event_ms, (int, float)):
             self._state.last_event_ms = int(last_event_ms)
 
+    def current_checkpoint_ms(self) -> int:
+        """Return current event checkpoint in milliseconds."""
+        return self._state.last_event_ms
+
+    def _build_import_diagnostics(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        force_reimport: bool,
+        dry_run: bool,
+    ) -> tuple[dict[str, int], dict[str, dict[datetime, float]]]:
+        """Build import diagnostics and hourly totals without mutating state."""
+        checkpoint_before = -1 if force_reimport else self._state.last_event_ms
+        events_fetched = len(events)
+        events_newer_than_checkpoint = 0
+        for event in events:
+            end_ms = event_end_timestamp_ms(event)
+            if end_ms is not None and end_ms > checkpoint_before:
+                events_newer_than_checkpoint += 1
+
+        fixture_hourly_totals, newest_event_ms = build_hourly_fixture_totals(
+            events,
+            checkpoint_before,
+        )
+
+        imported_rows = 0
+        for hourly_totals in fixture_hourly_totals.values():
+            imported_rows += len(hourly_totals)
+
+        checkpoint_after = self._state.last_event_ms
+        if newest_event_ms > checkpoint_after:
+            checkpoint_after = newest_event_ms
+
+        fixture_names: set[str] = set(self._state.fixture_sums.keys())
+        for event in events:
+            fixture_names.add(resolve_fixture_name(event))
+
+        cleared_statistic_ids = len(fixture_names) if force_reimport else 0
+
+        result = {
+            "imported_rows": imported_rows,
+            "events_fetched": events_fetched,
+            "events_newer_than_checkpoint": events_newer_than_checkpoint,
+            "checkpoint_before_ms": 0 if checkpoint_before < 0 else checkpoint_before,
+            "checkpoint_after_ms": checkpoint_after,
+            "cleared_statistic_ids": cleared_statistic_ids,
+            "force_reimport": 1 if force_reimport else 0,
+            "dry_run": 1 if dry_run else 0,
+        }
+        return result, fixture_hourly_totals
+
+    async def async_preview_import_events(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        force_reimport: bool = False,
+    ) -> dict[str, int]:
+        """Preview import effects without mutating state or statistics."""
+        result, _ = self._build_import_diagnostics(
+            events,
+            force_reimport=force_reimport,
+            dry_run=True,
+        )
+        return result
+
     def next_fetch_start(self, now: datetime) -> datetime:
         """Return the next from_datetime for event fetching."""
         if self._state.last_event_ms > 0:
@@ -141,15 +206,27 @@ class PhynFixtureStatisticsImporter:
             )
         return now - timedelta(days=DEFAULT_INITIAL_LOOKBACK_DAYS)
 
-    async def async_import_events(self, events: list[dict[str, Any]]) -> int:
+    async def async_import_events(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        force_reimport: bool = False,
+    ) -> dict[str, int]:
         """Import new event data into HA statistics.
 
-        Returns number of imported statistic rows.
+        Returns import diagnostics:
+            imported_rows: Number of statistic rows imported
+            events_fetched: Number of events fetched from API
+            events_newer_than_checkpoint: Events newer than last checkpoint
+            checkpoint_before_ms: Last checkpoint before import
+            checkpoint_after_ms: Last checkpoint after import
         """
-        fixture_hourly_totals, newest_event_ms = build_hourly_fixture_totals(
+        result, fixture_hourly_totals = self._build_import_diagnostics(
             events,
-            self._state.last_event_ms,
+            force_reimport=force_reimport,
+            dry_run=False,
         )
+        newest_event_ms = result["checkpoint_after_ms"]
 
         imported_rows = 0
 
@@ -182,10 +259,11 @@ class PhynFixtureStatisticsImporter:
                 imported_rows += len(stats)
                 self._state.fixture_sums[fixture_name] = cumulative
 
-        if newest_event_ms > self._state.last_event_ms:
+        checkpoint_changed = newest_event_ms > self._state.last_event_ms
+        if checkpoint_changed:
             self._state.last_event_ms = newest_event_ms
 
-        if imported_rows > 0:
+        if imported_rows > 0 or checkpoint_changed:
             await self._store.async_save(
                 {
                     "fixture_sums": self._state.fixture_sums,
@@ -193,4 +271,46 @@ class PhynFixtureStatisticsImporter:
                 }
             )
 
-        return imported_rows
+        result["imported_rows"] = imported_rows
+        result["checkpoint_after_ms"] = self._state.last_event_ms
+        result["cleared_statistic_ids"] = 0
+        result["dry_run"] = 0
+        return result
+
+    async def async_force_reimport_events(self, events: list[dict[str, Any]]) -> dict[str, int]:
+        """Force a rebuild by clearing existing stats for this device and re-importing.
+
+        This bypasses checkpoint gating and resets cumulative baselines.
+        """
+        fixture_names: set[str] = set(self._state.fixture_sums.keys())
+        for event in events:
+            fixture_names.add(resolve_fixture_name(event))
+
+        statistic_ids = [
+            fixture_statistic_id(self._device_id, fixture_name)
+            for fixture_name in sorted(fixture_names)
+        ]
+
+        cleared_statistic_ids = 0
+        if statistic_ids:
+            from homeassistant.components.recorder.statistics import async_clear_statistics
+
+            try:
+                await async_clear_statistics(self._hass, statistic_ids)
+            except TypeError:
+                await async_clear_statistics(self._hass, statistic_ids=statistic_ids)
+            cleared_statistic_ids = len(statistic_ids)
+
+        self._state.fixture_sums = {}
+        self._state.last_event_ms = 0
+        await self._store.async_save(
+            {
+                "fixture_sums": self._state.fixture_sums,
+                "last_event_ms": self._state.last_event_ms,
+            }
+        )
+
+        result = await self.async_import_events(events, force_reimport=True)
+        result["cleared_statistic_ids"] = cleared_statistic_ids
+        result["force_reimport"] = 1
+        return result

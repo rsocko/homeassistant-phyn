@@ -184,6 +184,58 @@ pytest tests/ --cov=custom_components.phyn --cov-report=term-missing -v
 pytest tests/test_config_flow.py -v
 ```
 
+### Dev Deploy Script (Container + Local aiophyn)
+
+Use [homeassistant-phyn/scripts/sync-dev-to-ha.ps1](homeassistant-phyn/scripts/sync-dev-to-ha.ps1) to repeatedly sync local changes into a Home Assistant config volume and optionally install local `aiophyn` in the running container.
+
+Examples:
+
+```powershell
+# Sync files only
+pwsh .\scripts\sync-dev-to-ha.ps1 -HaConfigPath "C:\ha-dev\config"
+
+# Sync + install editable aiophyn + restart container
+pwsh .\scripts\sync-dev-to-ha.ps1 -HaConfigPath "C:\ha-dev\config" -ContainerName "homeassistant"
+
+# Sync + install, but do not restart yet
+pwsh .\scripts\sync-dev-to-ha.ps1 -HaConfigPath "C:\ha-dev\config" -ContainerName "homeassistant" -SkipRestart
+```
+
+### In-Container Pull + Wire Script (GitHub Sources)
+
+If you prefer to pull directly from GitHub on the HA host/container side, use [homeassistant-phyn/scripts/pull-and-wire-dev.sh](homeassistant-phyn/scripts/pull-and-wire-dev.sh).
+
+Copy script into `/config/dev/deploy_local_phyn_integration.sh` (or another persistent path), then run inside the Home Assistant container shell:
+
+```bash
+bash /config/dev/deploy_local_phyn_integration.sh
+```
+
+Optional refs/branches:
+
+```bash
+FEATURE_BRANCH=feature/fixture-usage bash /config/dev/deploy_local_phyn_integration.sh
+```
+
+Useful options:
+
+```bash
+# Skip local aiophyn pip install
+SKIP_PIP_INSTALL=1 bash /config/dev/deploy_local_phyn_integration.sh
+
+# Disable auto-install of git (enabled by default)
+AUTO_INSTALL_GIT=0 bash /config/dev/deploy_local_phyn_integration.sh
+```
+
+This script will:
+- Clone/pull `homeassistant-phyn` and `aiophyn` under `/config/dev-src`
+- Sync `custom_components/phyn` into `/config/custom_components/phyn`
+- `pip install -e` local `aiophyn`
+
+Then restart Home Assistant.
+
+For manual fixture backfills via `phyn.import_fixture_statistics`, use `force_reimport: true` with an explicit timeframe (`days` or `start_datetime`/`end_datetime`) when you need to rebuild historical cumulative stats after corrections. Use `dry_run: true` first to preview rows/events/clears without changing data.
+
 ### Continuous Integration
 
 Tests run automatically on every pull request via GitHub Actions. The test suite validates:

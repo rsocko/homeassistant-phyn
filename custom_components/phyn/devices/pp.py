@@ -11,6 +11,7 @@ import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
 from ..fixture_statistics import PhynFixtureStatisticsImporter
+from ..logbook import async_add_logbook_entry
 from ..entities.base import (
     PhynAlertEvent,
     PhynAlertSensor,
@@ -246,7 +247,9 @@ class PhynPlusDevice(PhynDevice):
         self,
         from_datetime: datetime | None = None,
         to_datetime: datetime | None = None,
-    ) -> int:
+        force_reimport: bool = False,
+        dry_run: bool = False,
+    ) -> dict[str, int]:
         """Import fixture events for a given time window.
 
         If ``from_datetime`` is omitted, importer checkpoint state determines
@@ -262,7 +265,17 @@ class PhynPlusDevice(PhynDevice):
             from_dt = from_dt.replace(tzinfo=timezone.utc)
 
         if from_dt >= to_dt:
-            return 0
+            checkpoint = self._fixture_stats_importer.current_checkpoint_ms()
+            return {
+                "imported_rows": 0,
+                "events_fetched": 0,
+                "events_newer_than_checkpoint": 0,
+                "checkpoint_before_ms": checkpoint,
+                "checkpoint_after_ms": checkpoint,
+                "cleared_statistic_ids": 0,
+                "force_reimport": 1 if force_reimport else 0,
+                "dry_run": 1 if dry_run else 0,
+            }
 
         events = await self._coordinator.api_client.device.get_water_usage_events(
             self._phyn_device_id,
@@ -270,16 +283,63 @@ class PhynPlusDevice(PhynDevice):
             to_datetime=to_dt,
         )
 
+        if dry_run:
+            return await self._fixture_stats_importer.async_preview_import_events(
+                events,
+                force_reimport=force_reimport,
+            )
+        if force_reimport:
+            return await self._fixture_stats_importer.async_force_reimport_events(events)
         return await self._fixture_stats_importer.async_import_events(events)
 
     async def _update_fixture_statistics(self) -> None:
         """Fetch fixture usage events and import into HA long-term statistics."""
-        imported = await self.async_import_fixture_statistics()
-        if imported > 0:
-            LOGGER.debug(
-                "Imported %s fixture statistic rows for device %s",
-                imported,
+        try:
+            result = await self.async_import_fixture_statistics()
+            imported = int(result.get("imported_rows", 0))
+            events_fetched = int(result.get("events_fetched", 0))
+            newer_events = int(result.get("events_newer_than_checkpoint", 0))
+            checkpoint_before = int(result.get("checkpoint_before_ms", 0))
+            checkpoint_after = int(result.get("checkpoint_after_ms", 0))
+
+            if imported > 0:
+                LOGGER.info(
+                    "Recurring fixture import for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s",
+                    self._phyn_device_id,
+                    imported,
+                    events_fetched,
+                    newer_events,
+                    checkpoint_before,
+                    checkpoint_after,
+                )
+            else:
+                LOGGER.debug(
+                    "Recurring fixture import (no new rows) for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s",
+                    self._phyn_device_id,
+                    imported,
+                    events_fetched,
+                    newer_events,
+                    checkpoint_before,
+                    checkpoint_after,
+                )
+
+            if imported > 0:
+                await async_add_logbook_entry(
+                    self._coordinator.hass,
+                    (
+                        f"Recurring fixture import for {self._phyn_device_id}: "
+                        f"rows={imported}, events={events_fetched}, newer={newer_events}"
+                    ),
+                )
+        except Exception as err:
+            LOGGER.exception(
+                "Recurring fixture import failed for device %s: %s",
                 self._phyn_device_id,
+                err,
+            )
+            await async_add_logbook_entry(
+                self._coordinator.hass,
+                f"Recurring fixture import failed for {self._phyn_device_id}: {err}",
             )
     
     @property
