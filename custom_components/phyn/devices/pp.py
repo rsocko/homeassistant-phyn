@@ -1,5 +1,6 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
@@ -9,6 +10,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
+from ..fixture_statistics import PhynFixtureStatisticsImporter
 from ..entities.base import (
     PhynAlertEvent,
     PhynAlertSensor,
@@ -77,6 +79,10 @@ class PhynPlusDevice(PhynDevice):
         self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
         self._state_lock: Lock = Lock()
+        self._fixture_stats_importer = PhynFixtureStatisticsImporter(
+            coordinator.hass,
+            self._phyn_device_id,
+        )
 
         self.entities = [
             PhynAlertEvent(self),
@@ -115,6 +121,8 @@ class PhynPlusDevice(PhynDevice):
                 await self._update_autoshutoff()
                 await self._update_device_preferences()
                 await self._update_consumption_data()
+                if self._update_count % 15 == 0:
+                    await self._update_fixture_statistics()
 
                 #Update every 10 minutes
                 if self._update_count % 10 == 0:
@@ -229,9 +237,50 @@ class PhynPlusDevice(PhynDevice):
         """Setup a new device coordinator"""
         LOGGER.debug("Setting up coordinator")
 
+        await self._fixture_stats_importer.async_initialize()
         await self._coordinator.api_client.mqtt.add_event_handler("update", self.on_device_update)
         await self._coordinator.api_client.mqtt.subscribe(f"prd/app_subscriptions/{self._phyn_device_id}")
         return self._device_state["sov_status"]["v"]
+
+    async def async_import_fixture_statistics(
+        self,
+        from_datetime: datetime | None = None,
+        to_datetime: datetime | None = None,
+    ) -> int:
+        """Import fixture events for a given time window.
+
+        If ``from_datetime`` is omitted, importer checkpoint state determines
+        the next fetch start.
+        """
+        now_utc = dt_util.now(timezone.utc)
+        to_dt = to_datetime or now_utc
+        if to_dt.tzinfo is None:
+            to_dt = to_dt.replace(tzinfo=timezone.utc)
+
+        from_dt = from_datetime or self._fixture_stats_importer.next_fetch_start(to_dt)
+        if from_dt.tzinfo is None:
+            from_dt = from_dt.replace(tzinfo=timezone.utc)
+
+        if from_dt >= to_dt:
+            return 0
+
+        events = await self._coordinator.api_client.device.get_water_usage_events(
+            self._phyn_device_id,
+            from_datetime=from_dt,
+            to_datetime=to_dt,
+        )
+
+        return await self._fixture_stats_importer.async_import_events(events)
+
+    async def _update_fixture_statistics(self) -> None:
+        """Fetch fixture usage events and import into HA long-term statistics."""
+        imported = await self.async_import_fixture_statistics()
+        if imported > 0:
+            LOGGER.debug(
+                "Imported %s fixture statistic rows for device %s",
+                imported,
+                self._phyn_device_id,
+            )
     
     @property
     def autoshutoff_enabled(self) -> bool | None:

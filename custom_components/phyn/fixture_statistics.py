@@ -1,0 +1,196 @@
+"""Helpers for importing Phyn fixture events into Home Assistant statistics."""
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from homeassistant.components.recorder.statistics import (
+    StatisticData,
+    StatisticMetaData,
+    async_add_external_statistics,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
+
+from .const import DOMAIN
+
+FIXTURE_STATS_STORE_VERSION = 1
+DEFAULT_INITIAL_LOOKBACK_DAYS = 7
+
+
+@dataclass
+class FixtureStatisticsState:
+    """Persisted state for incremental fixture imports."""
+
+    fixture_sums: dict[str, float] = field(default_factory=dict)
+    last_event_ms: int = 0
+
+
+def resolve_fixture_name(event: dict[str, Any]) -> str:
+    """Resolve fixture name from an event, preferring user feedback labels."""
+    latest_feedback = event.get("latest_user_feedback") or {}
+    if latest_feedback:
+        tell_us = latest_feedback.get("tell_us")
+        if isinstance(tell_us, str) and tell_us.strip():
+            return tell_us.strip()
+
+    user_label = event.get("user_fixture_label")
+    if isinstance(user_label, str) and user_label.strip():
+        return user_label.strip()
+
+    suggested = (event.get("latest_suggested_fixtures_result") or {}).get(
+        "suggested_fixtures", []
+    )
+    if suggested:
+        fixture_name = suggested[0].get("fixture_name")
+        if isinstance(fixture_name, str) and fixture_name.strip():
+            return fixture_name.strip()
+
+    return "Unknown"
+
+
+def event_end_timestamp_ms(event: dict[str, Any]) -> int | None:
+    """Extract event close timestamp in milliseconds."""
+    end_ts = event.get("close_edge_timestamp") or event.get("open_edge_timestamp")
+    if not isinstance(end_ts, (int, float)):
+        return None
+    end_ts_int = int(end_ts)
+    if end_ts_int <= 0:
+        return None
+    return end_ts_int
+
+
+def build_hourly_fixture_totals(
+    events: list[dict[str, Any]],
+    last_event_ms: int,
+) -> tuple[dict[str, dict[datetime, float]], int]:
+    """Aggregate events newer than last_event_ms into hourly per-fixture totals."""
+    fixture_hourly_totals: dict[str, dict[datetime, float]] = defaultdict(
+        lambda: defaultdict(float)
+    )
+    newest_event_ms = last_event_ms
+
+    for event in events:
+        end_ms = event_end_timestamp_ms(event)
+        if end_ms is None or end_ms <= last_event_ms:
+            continue
+
+        fixture_name = resolve_fixture_name(event)
+        total_flow = event.get("total_flow")
+        if not isinstance(total_flow, (int, float)):
+            continue
+
+        end_dt = datetime.fromtimestamp(end_ms / 1000, tz=timezone.utc)
+        hour_start = end_dt.replace(minute=0, second=0, microsecond=0)
+        fixture_hourly_totals[fixture_name][hour_start] += float(total_flow)
+
+        if end_ms > newest_event_ms:
+            newest_event_ms = end_ms
+
+    return fixture_hourly_totals, newest_event_ms
+
+
+def fixture_statistic_id(device_id: str, fixture_name: str) -> str:
+    """Build stable statistic_id for a fixture."""
+    fixture_slug = "_".join(fixture_name.lower().split())
+    fixture_slug = "".join(c for c in fixture_slug if c.isalnum() or c == "_")
+    device_slug = "".join(c for c in device_id.lower() if c.isalnum())
+    return f"{DOMAIN}:{device_slug}_{fixture_slug}_water"
+
+
+class PhynFixtureStatisticsImporter:
+    """Import incremental fixture event data to HA long-term statistics."""
+
+    def __init__(self, hass: HomeAssistant, device_id: str) -> None:
+        """Initialize importer."""
+        self._hass = hass
+        self._device_id = device_id
+        self._store: Store[dict[str, Any]] = Store(
+            hass,
+            FIXTURE_STATS_STORE_VERSION,
+            f"{DOMAIN}_fixture_stats_{device_id.lower()}",
+        )
+        self._state = FixtureStatisticsState()
+
+    async def async_initialize(self) -> None:
+        """Load persisted importer state."""
+        data = await self._store.async_load()
+        if not isinstance(data, dict):
+            return
+
+        fixture_sums = data.get("fixture_sums", {})
+        if isinstance(fixture_sums, dict):
+            self._state.fixture_sums = {
+                str(name): float(value)
+                for name, value in fixture_sums.items()
+                if isinstance(value, (int, float))
+            }
+
+        last_event_ms = data.get("last_event_ms")
+        if isinstance(last_event_ms, (int, float)):
+            self._state.last_event_ms = int(last_event_ms)
+
+    def next_fetch_start(self, now: datetime) -> datetime:
+        """Return the next from_datetime for event fetching."""
+        if self._state.last_event_ms > 0:
+            return datetime.fromtimestamp(
+                (self._state.last_event_ms + 1) / 1000,
+                tz=timezone.utc,
+            )
+        return now - timedelta(days=DEFAULT_INITIAL_LOOKBACK_DAYS)
+
+    async def async_import_events(self, events: list[dict[str, Any]]) -> int:
+        """Import new event data into HA statistics.
+
+        Returns number of imported statistic rows.
+        """
+        fixture_hourly_totals, newest_event_ms = build_hourly_fixture_totals(
+            events,
+            self._state.last_event_ms,
+        )
+
+        imported_rows = 0
+
+        for fixture_name, hourly_totals in fixture_hourly_totals.items():
+            cumulative = self._state.fixture_sums.get(fixture_name, 0.0)
+            statistic_id = fixture_statistic_id(self._device_id, fixture_name)
+
+            metadata = StatisticMetaData(
+                has_mean=False,
+                has_sum=True,
+                name=f"Phyn {fixture_name} Water",
+                source=DOMAIN,
+                statistic_id=statistic_id,
+                unit_of_measurement="gal",
+            )
+
+            stats: list[StatisticData] = []
+            for hour_start in sorted(hourly_totals):
+                cumulative += hourly_totals[hour_start]
+                stats.append(
+                    StatisticData(
+                        start=hour_start,
+                        sum=round(cumulative, 6),
+                        state=round(cumulative, 6),
+                    )
+                )
+
+            if stats:
+                async_add_external_statistics(self._hass, metadata, stats)
+                imported_rows += len(stats)
+                self._state.fixture_sums[fixture_name] = cumulative
+
+        if newest_event_ms > self._state.last_event_ms:
+            self._state.last_event_ms = newest_event_ms
+
+        if imported_rows > 0:
+            await self._store.async_save(
+                {
+                    "fixture_sums": self._state.fixture_sums,
+                    "last_event_ms": self._state.last_event_ms,
+                }
+            )
+
+        return imported_rows
