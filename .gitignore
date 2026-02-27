@@ -1,6 +1,9 @@
 .DS_Store
 __pycache__
 .vscode
+.venv/
+.uvtest312/
+uv.lock
 
 # Test artifacts
 .pytest_cache/

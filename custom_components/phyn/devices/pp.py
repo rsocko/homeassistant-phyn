@@ -1,6 +1,6 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
@@ -80,6 +80,7 @@ class PhynPlusDevice(PhynDevice):
         self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
         self._state_lock: Lock = Lock()
+        self._fixture_reconciliation_days: int = 7
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
             self._phyn_device_id,
@@ -295,32 +296,62 @@ class PhynPlusDevice(PhynDevice):
     async def _update_fixture_statistics(self) -> None:
         """Fetch fixture usage events and import into HA long-term statistics."""
         try:
-            result = await self.async_import_fixture_statistics()
+            now_utc = dt_util.now(timezone.utc)
+            reconciliation_start = now_utc - timedelta(days=self._fixture_reconciliation_days)
+            reconciliation_preview = await self.async_import_fixture_statistics(
+                from_datetime=reconciliation_start,
+                to_datetime=now_utc,
+                force_reimport=True,
+                dry_run=True,
+            )
+            corrections_detected = int(
+                reconciliation_preview.get("corrections_detected", 0)
+            )
+
+            if corrections_detected > 0:
+                result = await self.async_import_fixture_statistics(
+                    from_datetime=reconciliation_start,
+                    to_datetime=now_utc,
+                    force_reimport=True,
+                )
+                LOGGER.info(
+                    "Recurring fixture reconciliation for device %s: corrections=%s, rows=%s, cleared=%s",
+                    self._phyn_device_id,
+                    corrections_detected,
+                    int(result.get("imported_rows", 0)),
+                    int(result.get("cleared_statistic_ids", 0)),
+                )
+            else:
+                result = await self.async_import_fixture_statistics()
+
             imported = int(result.get("imported_rows", 0))
             events_fetched = int(result.get("events_fetched", 0))
             newer_events = int(result.get("events_newer_than_checkpoint", 0))
             checkpoint_before = int(result.get("checkpoint_before_ms", 0))
             checkpoint_after = int(result.get("checkpoint_after_ms", 0))
+            corrections_detected = int(result.get("corrections_detected", 0))
 
             if imported > 0:
                 LOGGER.info(
-                    "Recurring fixture import for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s",
+                    "Recurring fixture import for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s, corrections=%s",
                     self._phyn_device_id,
                     imported,
                     events_fetched,
                     newer_events,
                     checkpoint_before,
                     checkpoint_after,
+                    corrections_detected,
                 )
             else:
                 LOGGER.debug(
-                    "Recurring fixture import (no new rows) for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s",
+                    "Recurring fixture import (no new rows) for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s, corrections=%s",
                     self._phyn_device_id,
                     imported,
                     events_fetched,
                     newer_events,
                     checkpoint_before,
                     checkpoint_after,
+                    corrections_detected,
                 )
 
             if imported > 0:
@@ -328,7 +359,7 @@ class PhynPlusDevice(PhynDevice):
                     self._coordinator.hass,
                     (
                         f"Recurring fixture import for {self._phyn_device_id}: "
-                        f"rows={imported}, events={events_fetched}, newer={newer_events}"
+                        f"rows={imported}, events={events_fetched}, newer={newer_events}, corrections={corrections_detected}"
                     ),
                 )
         except Exception as err:

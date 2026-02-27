@@ -12,6 +12,10 @@ pytest_plugins = "pytest_homeassistant_custom_component"
 
 
 @pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    """Enable custom integrations."""
+def auto_enable_custom_integrations(request):
+    """Enable custom integrations when HA pytest fixture is available."""
+    try:
+        request.getfixturevalue("enable_custom_integrations")
+    except pytest.FixtureLookupError:
+        pass
     yield

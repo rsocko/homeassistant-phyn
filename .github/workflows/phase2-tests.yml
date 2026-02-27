@@ -1,0 +1,82 @@
+name: Phase 2 Test Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      aiophyn_source:
+        description: "aiophyn source"
+        required: true
+        default: "repo"
+        type: choice
+        options:
+          - repo
+          - pypi
+      aiophyn_repo:
+        description: "aiophyn repo (owner/name) when source=repo"
+        required: true
+        default: "jordanruthe/aiophyn"
+        type: string
+      aiophyn_ref:
+        description: "aiophyn ref (branch/tag/SHA) when source=repo"
+        required: true
+        default: "main"
+        type: string
+      aiophyn_version:
+        description: "aiophyn version when source=pypi"
+        required: true
+        default: "2026.2.0"
+        type: string
+      test_scope:
+        description: "Which tests to run"
+        required: true
+        default: "phase2"
+        type: choice
+        options:
+          - phase2
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout homeassistant-phyn
+        uses: actions/checkout@v4
+
+      - name: Checkout aiophyn repository
+        if: ${{ inputs.aiophyn_source == 'repo' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.aiophyn_repo }}
+          ref: ${{ inputs.aiophyn_ref }}
+          path: ../aiophyn
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies (repo source)
+        if: ${{ inputs.aiophyn_source == 'repo' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+
+      - name: Install dependencies (pypi source)
+        if: ${{ inputs.aiophyn_source == 'pypi' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test_public.txt
+          pip install "aiophyn==${{ inputs.aiophyn_version }}"
+
+      - name: Run Phase 2 tests
+        if: ${{ inputs.test_scope == 'phase2' }}
+        run: |
+          pytest tests/test_fixture_statistics.py tests/test_fixture_statistics_importer.py tests/test_services_fixture_statistics.py -v
+
+      - name: Run full test suite
+        if: ${{ inputs.test_scope == 'all' }}
+        run: |
+          pytest tests/ -v

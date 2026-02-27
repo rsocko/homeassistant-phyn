@@ -69,3 +69,49 @@ import_fixture_statistics:
       default: false
       selector:
         boolean:
+
+reload_fixture_statistics:
+  name: Reload corrected fixture statistics
+  description: Rebuild corrected/historical fixture usage statistics for the requested timeframe
+  fields:
+    entity_id:
+      name: Entity
+      description: Any entity for the target Phyn device (optional)
+      required: false
+      selector:
+        entity: {}
+    device_id:
+      name: Device ID
+      description: Target Phyn device id (optional, used when entity_id is not set)
+      required: false
+      selector:
+        text:
+    days:
+      name: Days
+      description: Relative lookback window when start/end are not provided
+      required: false
+      default: 7
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
+    start_datetime:
+      name: Start datetime
+      description: Optional explicit start time (must be paired with end_datetime)
+      required: false
+      selector:
+        datetime:
+    end_datetime:
+      name: End datetime
+      description: Optional explicit end time (must be paired with start_datetime)
+      required: false
+      selector:
+        datetime:
+    dry_run:
+      name: Dry run
+      description: Preview rows/events/clears/corrections without changing statistics
+      required: false
+      default: false
+      selector:
+        boolean:

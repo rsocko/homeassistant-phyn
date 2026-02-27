@@ -18,6 +18,7 @@ from .const import DOMAIN
 
 FIXTURE_STATS_STORE_VERSION = 1
 DEFAULT_INITIAL_LOOKBACK_DAYS = 7
+DEFAULT_EVENT_CACHE_RETENTION_DAYS = 30
 
 
 @dataclass
@@ -26,6 +27,16 @@ class FixtureStatisticsState:
 
     fixture_sums: dict[str, float] = field(default_factory=dict)
     last_event_ms: int = 0
+    event_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+def extract_event_id(event: dict[str, Any]) -> str | None:
+    """Extract stable event identifier from event payload."""
+    event_id = event.get("event_id") or event.get("id")
+    if not isinstance(event_id, str):
+        return None
+    normalized = event_id.strip()
+    return normalized or None
 
 
 def resolve_fixture_name(event: dict[str, Any]) -> str:
@@ -92,12 +103,59 @@ def build_hourly_fixture_totals(
     return fixture_hourly_totals, newest_event_ms
 
 
+def detect_fixture_corrections(
+    events: list[dict[str, Any]],
+    cached_events: dict[str, dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Detect fixture assignment changes by comparing events to cached fixtures."""
+    corrections: list[dict[str, str]] = []
+    for event in events:
+        event_id = extract_event_id(event)
+        if event_id is None:
+            continue
+
+        current_fixture = resolve_fixture_name(event)
+        cached = cached_events.get(event_id)
+        if not isinstance(cached, dict):
+            continue
+
+        previous_fixture = cached.get("fixture")
+        if isinstance(previous_fixture, str) and previous_fixture != current_fixture:
+            corrections.append(
+                {
+                    "event_id": event_id,
+                    "old_fixture": previous_fixture,
+                    "new_fixture": current_fixture,
+                }
+            )
+
+    return corrections
+
+
 def fixture_statistic_id(device_id: str, fixture_name: str) -> str:
     """Build stable statistic_id for a fixture."""
     fixture_slug = "_".join(fixture_name.lower().split())
     fixture_slug = "".join(c for c in fixture_slug if c.isalnum() or c == "_")
     device_slug = "".join(c for c in device_id.lower() if c.isalnum())
     return f"{DOMAIN}:{device_slug}_{fixture_slug}_water"
+
+
+async def async_clear_statistic_ids(hass: HomeAssistant, statistic_ids: list[str]) -> int:
+    """Clear existing statistic ids when HA provides a compatible clear API."""
+    if not statistic_ids:
+        return 0
+
+    from homeassistant.components.recorder import statistics as recorder_statistics
+
+    clear_async = getattr(recorder_statistics, "async_clear_statistics", None)
+    if not callable(clear_async):
+        return 0
+
+    try:
+        await clear_async(hass, statistic_ids)
+    except TypeError:
+        await clear_async(hass, statistic_ids=statistic_ids)
+    return len(statistic_ids)
 
 
 class PhynFixtureStatisticsImporter:
@@ -131,6 +189,18 @@ class PhynFixtureStatisticsImporter:
         last_event_ms = data.get("last_event_ms")
         if isinstance(last_event_ms, (int, float)):
             self._state.last_event_ms = int(last_event_ms)
+
+        event_cache = data.get("event_cache", {})
+        if isinstance(event_cache, dict):
+            normalized: dict[str, dict[str, Any]] = {}
+            for key, value in event_cache.items():
+                if not isinstance(key, str) or not isinstance(value, dict):
+                    continue
+                fixture = value.get("fixture")
+                end_ms = value.get("end_ms")
+                if isinstance(fixture, str) and isinstance(end_ms, (int, float)):
+                    normalized[key] = {"fixture": fixture, "end_ms": int(end_ms)}
+            self._state.event_cache = normalized
 
     def current_checkpoint_ms(self) -> int:
         """Return current event checkpoint in milliseconds."""
@@ -178,10 +248,46 @@ class PhynFixtureStatisticsImporter:
             "checkpoint_before_ms": 0 if checkpoint_before < 0 else checkpoint_before,
             "checkpoint_after_ms": checkpoint_after,
             "cleared_statistic_ids": cleared_statistic_ids,
+            "corrections_detected": len(
+                detect_fixture_corrections(events, self._state.event_cache)
+            ),
+            "cached_events": len(self._state.event_cache),
             "force_reimport": 1 if force_reimport else 0,
             "dry_run": 1 if dry_run else 0,
         }
         return result, fixture_hourly_totals
+
+    def _update_event_cache(self, events: list[dict[str, Any]]) -> bool:
+        """Update persistent event->fixture cache and prune old entries."""
+        cache_changed = False
+        now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        cutoff_ms = now_ms - (DEFAULT_EVENT_CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+
+        for event in events:
+            event_id = extract_event_id(event)
+            end_ms = event_end_timestamp_ms(event)
+            if event_id is None or end_ms is None:
+                continue
+
+            fixture = resolve_fixture_name(event)
+            existing = self._state.event_cache.get(event_id)
+            next_entry = {"fixture": fixture, "end_ms": end_ms}
+            if existing != next_entry:
+                self._state.event_cache[event_id] = next_entry
+                cache_changed = True
+
+        stale_event_ids = [
+            event_id
+            for event_id, payload in self._state.event_cache.items()
+            if isinstance(payload, dict)
+            and isinstance(payload.get("end_ms"), int)
+            and payload["end_ms"] < cutoff_ms
+        ]
+        for event_id in stale_event_ids:
+            del self._state.event_cache[event_id]
+            cache_changed = True
+
+        return cache_changed
 
     async def async_preview_import_events(
         self,
@@ -263,11 +369,14 @@ class PhynFixtureStatisticsImporter:
         if checkpoint_changed:
             self._state.last_event_ms = newest_event_ms
 
-        if imported_rows > 0 or checkpoint_changed:
+        cache_changed = self._update_event_cache(events)
+
+        if imported_rows > 0 or checkpoint_changed or cache_changed:
             await self._store.async_save(
                 {
                     "fixture_sums": self._state.fixture_sums,
                     "last_event_ms": self._state.last_event_ms,
+                    "event_cache": self._state.event_cache,
                 }
             )
 
@@ -275,6 +384,7 @@ class PhynFixtureStatisticsImporter:
         result["checkpoint_after_ms"] = self._state.last_event_ms
         result["cleared_statistic_ids"] = 0
         result["dry_run"] = 0
+        result["cached_events"] = len(self._state.event_cache)
         return result
 
     async def async_force_reimport_events(self, events: list[dict[str, Any]]) -> dict[str, int]:
@@ -291,22 +401,16 @@ class PhynFixtureStatisticsImporter:
             for fixture_name in sorted(fixture_names)
         ]
 
-        cleared_statistic_ids = 0
-        if statistic_ids:
-            from homeassistant.components.recorder.statistics import async_clear_statistics
-
-            try:
-                await async_clear_statistics(self._hass, statistic_ids)
-            except TypeError:
-                await async_clear_statistics(self._hass, statistic_ids=statistic_ids)
-            cleared_statistic_ids = len(statistic_ids)
+        cleared_statistic_ids = await async_clear_statistic_ids(self._hass, statistic_ids)
 
         self._state.fixture_sums = {}
         self._state.last_event_ms = 0
+        self._state.event_cache = {}
         await self._store.async_save(
             {
                 "fixture_sums": self._state.fixture_sums,
                 "last_event_ms": self._state.last_event_ms,
+                "event_cache": self._state.event_cache,
             }
         )
 

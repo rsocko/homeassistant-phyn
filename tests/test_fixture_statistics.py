@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 
 from custom_components.phyn.fixture_statistics import (
     build_hourly_fixture_totals,
+    detect_fixture_corrections,
+    extract_event_id,
     fixture_statistic_id,
     resolve_fixture_name,
 )
@@ -51,7 +53,7 @@ def test_build_hourly_fixture_totals_aggregates_and_filters_old_events():
             },
         },
         {
-            "close_edge_timestamp": base_ms - 1,
+            "close_edge_timestamp": base_ms - 10,
             "total_flow": 99,
             "latest_suggested_fixtures_result": {
                 "suggested_fixtures": [{"fixture_name": "Sink"}]
@@ -71,3 +73,49 @@ def test_fixture_statistic_id_is_stable_and_sanitized():
     """Statistic IDs should be deterministic and URL-safe."""
     statistic_id = fixture_statistic_id("28F53741CBBA", "Master Bath Toilet")
     assert statistic_id == "phyn:28f53741cbba_master_bath_toilet_water"
+
+
+def test_extract_event_id_accepts_event_id_or_id_fields():
+    """Event ID extraction should support both event_id and id keys."""
+    assert extract_event_id({"event_id": "evt_123"}) == "evt_123"
+    assert extract_event_id({"id": "evt_456"}) == "evt_456"
+    assert extract_event_id({"event_id": "  evt_789  "}) == "evt_789"
+    assert extract_event_id({"event_id": 1}) is None
+
+
+def test_detect_fixture_corrections_reports_fixture_changes():
+    """Cached event fixture mismatch should be reported as a correction."""
+    cached_events = {
+        "evt_1": {"fixture": "Toilet", "end_ms": 1772000000000},
+        "evt_2": {"fixture": "Sink", "end_ms": 1772000001000},
+    }
+    events = [
+        {
+            "event_id": "evt_1",
+            "total_flow": 1.0,
+            "latest_suggested_fixtures_result": {
+                "suggested_fixtures": [{"fixture_name": "Shower Only"}]
+            },
+        },
+        {
+            "event_id": "evt_2",
+            "total_flow": 0.5,
+            "latest_suggested_fixtures_result": {
+                "suggested_fixtures": [{"fixture_name": "Sink"}]
+            },
+        },
+        {
+            "event_id": "evt_3",
+            "user_fixture_label": "Kitchen Sink",
+            "total_flow": 0.3,
+        },
+    ]
+
+    corrections = detect_fixture_corrections(events, cached_events)
+
+    assert len(corrections) == 1
+    assert corrections[0] == {
+        "event_id": "evt_1",
+        "old_fixture": "Toilet",
+        "new_fixture": "Shower Only",
+    }
