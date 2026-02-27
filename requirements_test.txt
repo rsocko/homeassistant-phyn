@@ -5,5 +5,5 @@ pytest-cov>=4.1.0
 # Explicit recorder deps required by some local/uv resolutions.
 psutil-home-assistant>=0.0.1
 fnv-hash-fast>=1.6.0
-# Phase 2 currently depends on aiophyn 2026.2.0 from local source.
+# Phase 2 currently depends on aiophyn 2026.2.1 from local source.
 -e ../aiophyn

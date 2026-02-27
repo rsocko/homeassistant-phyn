@@ -70,13 +70,13 @@ In Actions UI, run **Phase 2 Test Runner** with:
 ### Recommended inputs (release validation)
 
 - `aiophyn_source=pypi`
-- `aiophyn_version=2026.2.0`
+- `aiophyn_version=2026.2.1`
 - `test_scope=phase2`
 
 ## Notes
 
 - `requirements_test.txt` uses editable `-e ../aiophyn`.
-- `requirements_test_public.txt` uses published `aiophyn>=2026.2.0`.
+- `requirements_test_public.txt` uses published `aiophyn>=2026.2.1`.
 - If your local shell is noisy/slow with plugin autoload on Windows, keep `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` and load `pytest_asyncio.plugin` explicitly as shown above.
 
 ## Troubleshooting

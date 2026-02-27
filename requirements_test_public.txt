@@ -6,4 +6,4 @@ pytest-cov>=4.1.0
 psutil-home-assistant>=0.0.1
 fnv-hash-fast>=1.6.0
 # Use published aiophyn package instead of local editable checkout.
-aiophyn>=2026.2.0
+aiophyn>=2026.2.1

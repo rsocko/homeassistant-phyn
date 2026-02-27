@@ -24,7 +24,7 @@ on:
       aiophyn_version:
         description: "aiophyn version when source=pypi"
         required: true
-        default: "2026.2.0"
+        default: "2026.2.1"
         type: string
       test_scope:
         description: "Which tests to run"
