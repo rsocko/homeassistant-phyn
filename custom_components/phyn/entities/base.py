@@ -180,7 +180,7 @@ class PhynFirmwareUpdateAvailableSensor(PhynEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         return self._device.firmware_has_update
 
-class PhynFirwmwareUpdateEntity(PhynEntity, UpdateEntity):
+class PhynFirmwareUpdateEntity(PhynEntity, UpdateEntity):
     """Update entity for Phyn devices (read-only — install not supported)."""
 
     _attr_device_class = UpdateDeviceClass.FIRMWARE

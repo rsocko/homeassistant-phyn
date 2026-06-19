@@ -22,7 +22,7 @@ from .base import PhynDevice
 from ..entities.base import (
     PhynAlertEvent,
     PhynAlertSensor,
-    PhynFirwmwareUpdateEntity,
+    PhynFirmwareUpdateEntity,
     PhynHumiditySensor,
     PhynTemperatureSensor,
 )

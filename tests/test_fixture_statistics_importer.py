@@ -29,10 +29,19 @@ def _event(
     }
 
 
+def _fake_hass():
+    """Create a minimal hass-like object for testing without full HA runtime."""
+    import tempfile
+    ns = SimpleNamespace()
+    ns.data = {}
+    ns.config = SimpleNamespace(config_dir=tempfile.mkdtemp())
+    return ns
+
+
 @pytest.mark.asyncio
 async def test_preview_import_reports_fixture_corrections() -> None:
     """Preview should report corrections without mutating importer state."""
-    importer = PhynFixtureStatisticsImporter(SimpleNamespace(), "DEVICE_1")
+    importer = PhynFixtureStatisticsImporter(_fake_hass(), "DEVICE_1")
     importer._state.event_cache = {"evt_1": {"fixture": "Toilet", "end_ms": 1000}}
 
     result = await importer.async_preview_import_events(
@@ -50,7 +59,7 @@ async def test_import_events_updates_event_cache_and_returns_cached_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Import should persist event cache and expose cached_events diagnostics."""
-    importer = PhynFixtureStatisticsImporter(SimpleNamespace(), "DEVICE_2")
+    importer = PhynFixtureStatisticsImporter(_fake_hass(), "DEVICE_2")
     importer._store = SimpleNamespace(async_save=AsyncMock())
     monkeypatch.setattr(
         fixture_stats,
@@ -71,7 +80,7 @@ async def test_import_events_updates_event_cache_and_returns_cached_count(
 @pytest.mark.asyncio
 async def test_force_reimport_clears_existing_stats_then_reimports(monkeypatch: pytest.MonkeyPatch) -> None:
     """Force reimport should clear statistic ids and return clear diagnostics."""
-    importer = PhynFixtureStatisticsImporter(SimpleNamespace(), "DEVICE_3")
+    importer = PhynFixtureStatisticsImporter(_fake_hass(), "DEVICE_3")
     importer._store = SimpleNamespace(async_save=AsyncMock())
     importer._state.fixture_sums = {"Toilet": 5.0}
     importer._state.last_event_ms = 3000
