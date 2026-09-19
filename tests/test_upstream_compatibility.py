@@ -2,8 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, create_autospec
 
+from aiophyn.device import Device
 import pytest
 from homeassistant.helpers.target import TargetSelection
 
@@ -26,10 +27,12 @@ async def test_fixture_import_uses_millisecond_api(
 ):
     """All import modes use the published timestamp API without changing events."""
     events = [{"id": "event_1", "total_flow": 1.5}]
-    fetch = AsyncMock(return_value=events)
+    api_device = create_autospec(Device, instance=True)
+    fetch = api_device.get_water_usage_events
+    fetch.return_value = events
     coordinator = SimpleNamespace(
         hass=hass,
-        api_client=SimpleNamespace(device=SimpleNamespace(get_water_usage_events=fetch)),
+        api_client=SimpleNamespace(device=api_device),
     )
     device = PhynPlusDevice(coordinator, "home_1", "device_1", "PP1")
     importer = SimpleNamespace(
