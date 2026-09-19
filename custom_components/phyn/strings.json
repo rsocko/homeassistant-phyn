@@ -49,5 +49,66 @@
     "auth_failed": {
       "message": "Authentication failed. Please reauthenticate."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "alert_battery": { "name": "Battery Alert" },
+      "alert_freeze_warn": { "name": "Freeze Warning Alert" },
+      "alert_high_pressure": { "name": "High Pressure Alert" },
+      "alert_leak": { "name": "Leak Alert" },
+      "alert_offline_leak": { "name": "Offline Leak Shutoff Alert" },
+      "alert_periodic_leak": { "name": "Recurring Flow Alert" },
+      "alert_pinhole_leak": { "name": "Pinhole Leak Alert" },
+      "alert_temperature": { "name": "Temperature Alert" },
+      "firmware_update_available": { "name": "Firmware Update Available" },
+      "leak_test_running": { "name": "Leak Test Running" },
+      "leak_test_warning": { "name": "Leak Test Warning" },
+      "leak_test_leak": { "name": "Leak Detected" }
+    },
+    "sensor": {
+      "daily_consumption": { "name": "Daily water usage" },
+      "consumption": { "name": "Total Water Usage" },
+      "current_flow_rate": { "name": "Current water flow rate" },
+      "temperature1": { "name": "Average hot water temperature" },
+      "temperature2": { "name": "Average cold water temperature" },
+      "pressure1": { "name": "Average hot water pressure" },
+      "pressure2": { "name": "Average cold water pressure" },
+      "temperature": { "name": "Current water temperature" },
+      "pressure": { "name": "Current water pressure" },
+      "water_flow_state": { "name": "Water Flowing" },
+      "humidity": { "name": "Humidity" },
+      "battery": { "name": "Battery" },
+      "air_temperature": { "name": "Air Temperature" }
+    },
+    "switch": {
+      "autoshutoff_enabled": { "name": "Autoshutoff Enabled" },
+      "away_mode": { "name": "Away Mode" },
+      "scheduled_leak_test_enabled": { "name": "Scheduled Leak Test Enabled" }
+    },
+    "valve": {
+      "shutoff_valve": { "name": "Shutoff valve" }
+    },
+    "event": {
+      "alert_event": { "name": "Alert" }
+    },
+    "update": {
+      "firmware_update": { "name": "Firmware Update" }
+    }
+  },
+  "services": {
+    "leak_test": {
+      "name": "Start a leak test",
+      "description": "Starts a leak test for a phyn smart valve",
+      "fields": {
+        "entity_id": {
+          "name": "Valve",
+          "description": "Valve to run leak test from"
+        },
+        "extended": {
+          "name": "Extended Test",
+          "description": "Extended leak test"
+        }
+      }
+    }
   }
 }

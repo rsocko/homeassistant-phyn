@@ -6,7 +6,7 @@ import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
-from homeassistant.helpers.service import async_extract_referenced_entity_ids
+from homeassistant.helpers.target import async_extract_referenced_entity_ids, TargetSelection
 
 from .const import CLIENT, DOMAIN, LOGGER
 from .logbook import async_add_logbook_entry
@@ -36,7 +36,8 @@ def _resolve_device_id_from_entity(hass: HomeAssistant, entity_id: str) -> str:
 async def phyn_leak_test(service: ServiceCall):
     """Handle the service call."""
     try:
-        ref = async_extract_referenced_entity_ids(service.hass, service)
+        target = TargetSelection(service.data)
+        ref = async_extract_referenced_entity_ids(service.hass, target)
         entity_registry = er.async_get(service.hass)
         device_registry = dr.async_get(service.hass)
 

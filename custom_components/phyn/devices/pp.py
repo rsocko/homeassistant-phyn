@@ -140,10 +140,16 @@ class PhynPlusDevice(PhynDevice):
 
     @property
     def consumption(self) -> float | None:
-        """Return the current consumption for today in gallons."""
-        if "consumption" not in self._rt_device_state:
+        """Return the lifetime meter reading in gallons."""
+        value = self._device_state.get("consumption")
+        # REST get_state() stores {"v": ..., "ts": ...}; on_device_update stores
+        # a floored scalar. Accept both so a realtime message that lacks
+        # "consumption" cannot drop the sensor to unknown.
+        if isinstance(value, dict):
+            value = value.get("v")
+        if value is None:
             return None
-        return self._device_state.get("consumption")
+        return math.floor(value * 100) / 100
 
     @property
     def consumption_today(self) -> float | None:
@@ -280,8 +286,8 @@ class PhynPlusDevice(PhynDevice):
 
         events = await self._coordinator.api_client.device.get_water_usage_events(
             self._phyn_device_id,
-            from_datetime=from_dt,
-            to_datetime=to_dt,
+            from_ts=int(from_dt.timestamp() * 1000),
+            to_ts=int(to_dt.timestamp() * 1000),
         )
 
         if dry_run:

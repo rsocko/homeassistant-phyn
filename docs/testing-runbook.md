@@ -1,170 +1,68 @@
 # Testing Runbook
 
-Copy/paste commands for reliable Phase 2 testing in `homeassistant-phyn`.
+Use Python 3.14 for the current Home Assistant test harness.
 
-## Prerequisites
+## Local tests with published aiophyn
 
-- Repos checked out (for local editable mode):
-  - `../homeassistant-phyn`
-  - `../aiophyn`
-- Windows Python launcher available as `py`
-- `uv` available via Python module:
+From the integration checkout on Windows:
 
 ```powershell
-py -3.14 -m pip install --user uv
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements_test.txt
+.\.venv\Scripts\python.exe -m pytest tests -v
 ```
 
-## Local test run (editable local `aiophyn`)
+`requirements_test_public.txt` includes the same requirements, including
+`aiophyn>=2026.9.1`. There is no implicit dependency on a sibling checkout.
 
-Use this when actively developing both repos together.
+To run only fixture usage and upstream compatibility coverage:
 
 ```powershell
-cd C:\dev\homeassistant-phyn
-$env:UV_PROJECT_ENVIRONMENT='.uvtest312'
-$env:UV_NO_PROGRESS='1'
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
-py -3.14 -m uv run --python 3.12 --with-requirements requirements_test.txt pytest -p pytest_asyncio.plugin tests/test_fixture_statistics.py tests/test_fixture_statistics_importer.py tests/test_services_fixture_statistics.py -v
+.\.venv\Scripts\python.exe -m pytest tests\test_fixture_statistics.py tests\test_fixture_statistics_importer.py tests\test_services_fixture_statistics.py tests\test_upstream_compatibility.py -v
 ```
 
-## Local test run (published `aiophyn` from PyPI)
+Home Assistant's test harness is primarily supported on Linux. If its platform
+dependencies or socket fixtures fail on Windows, use the Linux Actions workflow;
+do not downgrade to Python 3.12 or the old Home Assistant harness, which cannot
+exercise the current `homeassistant.helpers.target` API.
 
-Use this to validate installation behavior with released package dependencies.
+## Testing a local aiophyn checkout
+
+When developing both repositories, explicitly select a compatible local checkout:
 
 ```powershell
-cd C:\dev\homeassistant-phyn
-$env:UV_PROJECT_ENVIRONMENT='.uvtest312'
-$env:UV_NO_PROGRESS='1'
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
-py -3.14 -m uv run --python 3.12 --with-requirements requirements_test_public.txt pytest -p pytest_asyncio.plugin tests/test_fixture_statistics.py tests/test_fixture_statistics_importer.py tests/test_services_fixture_statistics.py -v
+.\.venv\Scripts\python.exe -m pip install -r requirements_test.txt -e ..\aiophyn
+.\.venv\Scripts\python.exe -m pytest tests -v
 ```
 
-## Run full local suite
+The checkout must satisfy `aiophyn>=2026.9.1` and provide
+`get_water_usage_events(device_id, from_ts, to_ts)` with millisecond timestamps.
+The old `feature/fixture-usage` datetime signature is not compatible with this
+updated integration.
 
-```powershell
-cd C:\dev\homeassistant-phyn
-$env:UV_PROJECT_ENVIRONMENT='.uvtest312'
-$env:UV_NO_PROGRESS='1'
-py -3.14 -m uv run --python 3.12 --with-requirements requirements_test.txt pytest tests/ -v
-```
+## GitHub Actions
 
-## GitHub Actions run (no local environment required)
+Run **Phase 2 Test Runner** (`.github/workflows/phase2-tests.yml`).
 
-Workflow: `.github/workflows/phase2-tests.yml`
-
-In Actions UI, run **Phase 2 Test Runner** with:
-
-- `aiophyn_source`:
-  - `repo` to test against a repo branch/ref
-  - `pypi` to test against a published package version
-- `test_scope`:
-  - `phase2` for fixture statistics tests only
-  - `all` for full suite
-
-### Recommended inputs (active branch validation)
-
-- `aiophyn_source=repo`
-- `aiophyn_repo=jordanruthe/aiophyn`
-- `aiophyn_ref=feature/fixture-usage`
-- `test_scope=phase2`
-
-### Recommended inputs (release validation)
+For released dependencies, use:
 
 - `aiophyn_source=pypi`
-- `aiophyn_version=2026.2.1`
-- `test_scope=phase2`
+- `aiophyn_version=2026.9.1`
+- `test_scope=phase2` (fixture and upstream compatibility tests) or `all`
 
-## Notes
+For library development, use:
 
-- `requirements_test.txt` uses editable `-e ../aiophyn`.
-- `requirements_test_public.txt` uses published `aiophyn>=2026.2.1`.
-- If your local shell is noisy/slow with plugin autoload on Windows, keep `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` and load `pytest_asyncio.plugin` explicitly as shown above.
+- `aiophyn_source=repo`
+- `aiophyn_repo=jordanruthe/aiophyn` (or your compatible fork)
+- `aiophyn_ref=main` (or a compatible branch/tag/SHA)
 
-## Troubleshooting
+Both paths use Python 3.14 and resolve the library together with the test
+requirements. A selected version older than the integration's minimum should
+fail dependency resolution rather than silently downgrade the runtime library.
 
-### `uv` is not recognized
+## Upstream merge verification
 
-Symptom:
-
-- `uv : The term 'uv' is not recognized...`
-
-Fix:
-
-```powershell
-py -3.14 -m pip install --user uv
-py -3.14 -m uv --version
-```
-
-### `ciso8601` build errors on Windows
-
-Symptom:
-
-- Build fails with Visual C++ toolchain message when using Python 3.14
-
-Fix:
-
-- Force Python 3.12 in `uv run` commands:
-
-```powershell
-py -3.14 -m uv run --python 3.12 ...
-```
-
-### Resolver errors around Home Assistant test dependencies
-
-Symptom:
-
-- Unsatisfiable requirements for pytest / pytest-homeassistant-custom-component
-
-Fix:
-
-- Use the checked-in requirement files exactly as-is.
-- Ensure `aiophyn` dependency range supports HA test stack (`paho-mqtt>=1.6.1,<3.0.0` in local `aiophyn`).
-
-### Missing modules during collection (`psutil_home_assistant`, `fnv_hash_fast`)
-
-Symptom:
-
-- Import errors while loading `homeassistant.components.recorder`
-
-Fix:
-
-- Keep explicit packages in requirements files:
-  - `psutil-home-assistant`
-  - `fnv-hash-fast`
-
-### `SocketBlockedError` on Windows during event loop setup
-
-Symptom:
-
-- `pytest_socket.SocketBlockedError: A test tried to use socket.socket`
-
-Fix:
-
-- Prefer plugin-minimal command for local Windows validation:
-
-```powershell
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
-py -3.14 -m uv run --python 3.12 --with-requirements requirements_test.txt pytest -p pytest_asyncio.plugin tests/test_fixture_statistics.py tests/test_fixture_statistics_importer.py tests/test_services_fixture_statistics.py -v
-```
-
-### Async tests are skipped in plugin-minimal mode
-
-Symptom:
-
-- `PytestUnhandledCoroutineWarning` and async tests show as skipped
-
-Fix:
-
-- Ensure `pytest_asyncio` plugin is explicitly loaded:
-  - `-p pytest_asyncio.plugin`
-
-## Known-good output
-
-For the Phase 2 command in this runbook, a successful run should end with output similar to:
-
-```text
-collected 12 items
-...
-======================== 12 passed, 1 warning in ~4s ========================
-```
-
-If you do not see all 12 tests pass, compare your command/environment to the sections above (especially Python version and plugin flags).
+The compatibility tests cover the published water-event API, retained fixture
+service registration, boolean extended leak tests with Home Assistant's target
+helper, and upstream's lifetime-consumption handling. No live Phyn credentials
+are needed. They do not replace checking actual device behavior in Home Assistant.

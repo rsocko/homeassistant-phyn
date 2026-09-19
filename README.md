@@ -2,11 +2,12 @@
 
 Home Assistant custom component for interfacing with [Phyn](https://www.phyn.com) Smart Water Assistant and Kohler H2Wise+ by Phyn.
 
-The integration's [IoT class is Cloud Push](https://www.home-assistant.io/blog/2016/02/12/classifying-the-internet-of-things/#classifiers), meaning the Home Assistant integration with this device happens via the Phyn cloud service. As such it requires an active internet connection to see updates and make changes,  Home Assistant will however be notified as soon as a new state is available. (so the response time is the same as using the official Phyn app).
+The integration's [IoT class is Cloud Polling](https://www.home-assistant.io/blog/2016/02/12/classifying-the-internet-of-things/#classifiers), meaning the Home Assistant integration with this device happens via the Phyn cloud service. As such it requires an active internet connection to see updates and make changes, and Home Assistant polls the cloud service periodically for new state.
 
 This integration currently provides the following capabilities:
 
 - Daily water usage (compatible with Energy dashboard)
+- Per-fixture water usage statistics, historical imports, and correction reloads (this fork)
 - Average water temperature, pressure, and flow (realtime not available)
 - Shutoff valve control
 - Away mode control
@@ -38,6 +39,34 @@ Configuration is done via the UI. Add the "Phyn" integration via the Integration
 * Search for and select "Phyn".
 
 * A prompt will appear for you to enter your Phyn Account username and password. (This could sometimes take 2-3 minutes, or longer).
+
+# Translations
+
+[![Translation status](https://hosted.weblate.org/widget/homeassistant-phyn/homeassistant-phyn/svg-badge.svg)](https://hosted.weblate.org/engage/homeassistant-phyn/)
+
+Translations for this integration are managed with [Weblate](https://weblate.org/), a
+libre web-based continuous localization platform. Weblate generously provides free
+hosting for this project under its [Libre plan](https://weblate.org/hosting/).
+
+Want to help translate Phyn into your language? No GitHub account or coding required —
+just head to the [Phyn project on Hosted Weblate](https://hosted.weblate.org/engage/homeassistant-phyn/)
+and start translating. Contributions are batched into pull requests automatically.
+
+[![Translation status](https://hosted.weblate.org/widget/homeassistant-phyn/homeassistant-phyn/multi-auto.svg)](https://hosted.weblate.org/engage/homeassistant-phyn/)
+
+For contributors: `strings.json` is the source of truth for the integration's English
+strings (config flow, entity names, service names) and may reference Home Assistant's
+shared strings via `[%key:...%]`. `translations/en.json` is the literal-English template
+Weblate translates from — it's generated, not hand-edited. After changing `strings.json`,
+regenerate it with:
+
+```
+python3 scripts/sync_translations.py
+```
+
+CI runs `scripts/sync_translations.py --check` to make sure the two never drift. The
+other `translations/*.json` files are owned by Weblate; hand edits to them get
+overwritten on the next Weblate sync.
 
 # Tracking usage since a date (e.g. cistern fills)
 
@@ -181,10 +210,17 @@ pytest tests/
 pytest tests/ --cov=custom_components.phyn --cov-report=term-missing -v
 
 # Run specific test file
-pytest tests/test_config_flow.py -v
+pytest tests/test_config_flow_helpers.py -v
 ```
 
 For manual fixture backfills via `phyn.import_fixture_statistics`, use `force_reimport: true` with an explicit timeframe (`days` or `start_datetime`/`end_datetime`) when you need to rebuild historical cumulative stats after corrections. Use `dry_run: true` first to preview rows/events/clears without changing data.
+
+This fork combines the fixture-usage features with upstream `main` at `10e4409`
+(2026-09-13). Fixture imports use the published `aiophyn>=2026.9.1` millisecond
+timestamp API; the older datetime-based API from the `aiophyn` feature branch is
+no longer required. Existing fixture statistic IDs and stored checkpoints are
+unchanged. The HACS instructions above install upstream, not this fork's
+additional fixture-usage features.
 
 ### Continuous Integration
 
@@ -194,4 +230,4 @@ Tests run automatically on every pull request via GitHub Actions. The test suite
 - Configuration migration
 - Reauth and reconfigure flows
 
-This ensures compatibility with Home Assistant 2024.2.0+ and helps maintain Bronze tier quality standards.
+This ensures compatibility with Home Assistant 2026.6.4+ and helps maintain Bronze tier quality standards.

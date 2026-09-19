@@ -11,26 +11,133 @@
             "unknown": "Unexpected error"
         },
         "step": {
+            "device": {
+                "description": "Choose which devices to monitor in Home Assistant. At least one device must be selected.",
+                "title": "Select Devices"
+            },
+            "reauth_confirm": {
+                "data": {
+                    "password": "Password",
+                    "username": "Username"
+                }
+            },
+            "reconfigure": {
+                "description": "Update which devices are monitored in Home Assistant.",
+                "title": "Select Devices"
+            },
             "user": {
                 "data": {
                     "host": "Host",
                     "password": "Password",
                     "username": "Username"
                 }
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "alert_battery": {
+                "name": "Battery Alert"
             },
-            "device": {
-                "title": "Select Devices",
-                "description": "Choose which devices to monitor in Home Assistant. At least one device must be selected."
+            "alert_freeze_warn": {
+                "name": "Freeze Warning Alert"
             },
-            "reconfigure": {
-                "title": "Select Devices",
-                "description": "Update which devices are monitored in Home Assistant."
+            "alert_high_pressure": {
+                "name": "High Pressure Alert"
             },
-            "reauth_confirm": {
-                "data": {
-                    "username": "Username",
-                    "password": "Password"
-                }
+            "alert_leak": {
+                "name": "Leak Alert"
+            },
+            "alert_offline_leak": {
+                "name": "Offline Leak Shutoff Alert"
+            },
+            "alert_periodic_leak": {
+                "name": "Recurring Flow Alert"
+            },
+            "alert_pinhole_leak": {
+                "name": "Pinhole Leak Alert"
+            },
+            "alert_temperature": {
+                "name": "Temperature Alert"
+            },
+            "firmware_update_available": {
+                "name": "Firmware Update Available"
+            },
+            "leak_test_leak": {
+                "name": "Leak Detected"
+            },
+            "leak_test_running": {
+                "name": "Leak Test Running"
+            },
+            "leak_test_warning": {
+                "name": "Leak Test Warning"
+            }
+        },
+        "event": {
+            "alert_event": {
+                "name": "Alert"
+            }
+        },
+        "sensor": {
+            "air_temperature": {
+                "name": "Air Temperature"
+            },
+            "battery": {
+                "name": "Battery"
+            },
+            "consumption": {
+                "name": "Total Water Usage"
+            },
+            "current_flow_rate": {
+                "name": "Current water flow rate"
+            },
+            "daily_consumption": {
+                "name": "Daily water usage"
+            },
+            "humidity": {
+                "name": "Humidity"
+            },
+            "pressure": {
+                "name": "Current water pressure"
+            },
+            "pressure1": {
+                "name": "Average hot water pressure"
+            },
+            "pressure2": {
+                "name": "Average cold water pressure"
+            },
+            "temperature": {
+                "name": "Current water temperature"
+            },
+            "temperature1": {
+                "name": "Average hot water temperature"
+            },
+            "temperature2": {
+                "name": "Average cold water temperature"
+            },
+            "water_flow_state": {
+                "name": "Water Flowing"
+            }
+        },
+        "switch": {
+            "autoshutoff_enabled": {
+                "name": "Autoshutoff Enabled"
+            },
+            "away_mode": {
+                "name": "Away Mode"
+            },
+            "scheduled_leak_test_enabled": {
+                "name": "Scheduled Leak Test Enabled"
+            }
+        },
+        "update": {
+            "firmware_update": {
+                "name": "Firmware Update"
+            }
+        },
+        "valve": {
+            "shutoff_valve": {
+                "name": "Shutoff valve"
             }
         }
     },
@@ -42,12 +149,28 @@
     "options": {
         "step": {
             "init": {
-                "title": "Phyn Alert Options",
-                "description": "Choose which alert types should be suppressed and never fire a Home Assistant event.",
                 "data": {
                     "excluded_alert_types": "Suppress these alert types"
-                }
+                },
+                "description": "Choose which alert types should be suppressed and never fire a Home Assistant event.",
+                "title": "Phyn Alert Options"
             }
+        }
+    },
+    "services": {
+        "leak_test": {
+            "description": "Starts a leak test for a phyn smart valve",
+            "fields": {
+                "entity_id": {
+                    "description": "Valve to run leak test from",
+                    "name": "Valve"
+                },
+                "extended": {
+                    "description": "Extended leak test",
+                    "name": "Extended Test"
+                }
+            },
+            "name": "Start a leak test"
         }
     }
 }
