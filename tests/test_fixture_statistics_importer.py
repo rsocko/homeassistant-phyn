@@ -7,6 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.components.recorder.models.statistics import StatisticMeanType
+from homeassistant.const import UnitOfVolume
+from homeassistant.util.unit_conversion import VolumeConverter
 
 from custom_components.phyn import fixture_statistics as fixture_stats
 from custom_components.phyn.fixture_statistics import PhynFixtureStatisticsImporter
@@ -102,3 +105,26 @@ async def test_force_reimport_clears_existing_stats_then_reimports(monkeypatch: 
     assert result["force_reimport"] == 1
     assert result["cleared_statistic_ids"] >= 1
     assert result["checkpoint_after_ms"] == 5000
+
+
+@pytest.mark.asyncio
+async def test_import_uses_current_recorder_metadata(hass, monkeypatch):
+    """Explicit metadata must not depend on the deprecated HA fallback."""
+    importer = PhynFixtureStatisticsImporter(hass, "DEVICE_4")
+    importer._store = SimpleNamespace(async_save=AsyncMock())
+    submissions = []
+    monkeypatch.setattr(
+        fixture_stats,
+        "async_add_external_statistics",
+        lambda _hass, metadata, rows: submissions.append((metadata, rows)),
+    )
+
+    await importer.async_import_events([_event("evt_4", "Kitchen", 5000, 0.5)])
+
+    metadata, rows = submissions[0]
+    assert metadata["mean_type"] == StatisticMeanType.NONE
+    assert metadata["unit_class"] == VolumeConverter.UNIT_CLASS
+    assert metadata["unit_of_measurement"] == UnitOfVolume.GALLONS
+    assert metadata["has_sum"] is True
+    assert "has_mean" not in metadata
+    assert rows[0]["sum"] == 0.5

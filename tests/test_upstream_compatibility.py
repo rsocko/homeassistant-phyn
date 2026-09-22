@@ -36,6 +36,7 @@ async def test_fixture_import_uses_millisecond_api(
     )
     device = PhynPlusDevice(coordinator, "home_1", "device_1", "PP1")
     importer = SimpleNamespace(
+        async_initialize=AsyncMock(),
         async_import_events=AsyncMock(return_value={"imported_rows": 1}),
         async_force_reimport_events=AsyncMock(return_value={"imported_rows": 1}),
         async_preview_import_events=AsyncMock(return_value={"imported_rows": 1}),
@@ -63,8 +64,9 @@ async def test_fixture_import_uses_millisecond_api(
     else:
         getattr(importer, handler).assert_awaited_once_with(events)
     for other in vars(importer):
-        if other != handler:
+        if other not in (handler, "async_initialize"):
             getattr(importer, other).assert_not_awaited()
+    importer.async_initialize.assert_awaited_once()
     assert result == {"imported_rows": 1}
 
 
@@ -127,3 +129,19 @@ def test_lifetime_consumption_retains_upstream_fix(value):
     device._rt_device_state = {}
 
     assert device.consumption == (123.45 if value is not None else None)
+
+
+@pytest.mark.asyncio
+async def test_autoshutoff_uses_upstream_method_name(hass):
+    """The paired library retains the upstream misspelled method, without an alias."""
+    api_device = create_autospec(Device, instance=True)
+    api_device.get_autoshuftoff_status.return_value = {"auto_shutoff_enable": True}
+    device = PhynPlusDevice(
+        SimpleNamespace(hass=hass, api_client=SimpleNamespace(device=api_device)),
+        "home_1", "device_1", "PP1",
+    )
+
+    await device._update_autoshutoff()
+
+    api_device.get_autoshuftoff_status.assert_awaited_once_with("device_1")
+    assert device.autoshutoff_enabled is True

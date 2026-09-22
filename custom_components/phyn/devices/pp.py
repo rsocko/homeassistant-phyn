@@ -80,6 +80,7 @@ class PhynPlusDevice(PhynDevice):
         self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
         self._state_lock: Lock = Lock()
+        self._fixture_import_lock: Lock = Lock()
         self._fixture_reconciliation_days: int = 7
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
@@ -256,6 +257,20 @@ class PhynPlusDevice(PhynDevice):
         to_datetime: datetime | None = None,
         force_reimport: bool = False,
         dry_run: bool = False,
+    ) -> dict[str, int]:
+        """Restore state and serialize manual and recurring fixture imports."""
+        async with self._fixture_import_lock:
+            await self._fixture_stats_importer.async_initialize()
+            return await self._async_import_fixture_statistics(
+                from_datetime, to_datetime, force_reimport, dry_run
+            )
+
+    async def _async_import_fixture_statistics(
+        self,
+        from_datetime: datetime | None,
+        to_datetime: datetime | None,
+        force_reimport: bool,
+        dry_run: bool,
     ) -> dict[str, int]:
         """Import fixture events for a given time window.
 
@@ -446,7 +461,7 @@ class PhynPlusDevice(PhynDevice):
     
     async def _update_autoshutoff(self, *_) -> None:
         """Update auto shutoff status"""
-        data = await self._coordinator.api_client.device.get_autoshutoff_status(self._phyn_device_id)
+        data = await self._coordinator.api_client.device.get_autoshuftoff_status(self._phyn_device_id)
         LOGGER.debug("Autoshutoff info: %s" % data)
         self._auto_shutoff.update(data)
 

@@ -1,6 +1,7 @@
 """Helpers for importing Phyn fixture events into Home Assistant statistics."""
 from __future__ import annotations
 
+from asyncio import Lock
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -11,8 +12,11 @@ from homeassistant.components.recorder.statistics import (
     StatisticMetaData,
     async_add_external_statistics,
 )
+from homeassistant.components.recorder.models.statistics import StatisticMeanType
+from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.util.unit_conversion import VolumeConverter
 
 from .const import DOMAIN
 
@@ -171,9 +175,19 @@ class PhynFixtureStatisticsImporter:
             f"{DOMAIN}_fixture_stats_{device_id.lower()}",
         )
         self._state = FixtureStatisticsState()
+        self._initialized = False
+        self._initialize_lock = Lock()
 
     async def async_initialize(self) -> None:
-        """Load persisted importer state."""
+        """Restore state once, including when the first caller is a refresh."""
+        async with self._initialize_lock:
+            if self._initialized:
+                return
+            await self._async_load_state()
+            self._initialized = True
+
+    async def _async_load_state(self) -> None:
+        """Load persisted importer state without overwriting it on later setup."""
         data = await self._store.async_load()
         if not isinstance(data, dict):
             return
@@ -341,12 +355,13 @@ class PhynFixtureStatisticsImporter:
             statistic_id = fixture_statistic_id(self._device_id, fixture_name)
 
             metadata = StatisticMetaData(
-                has_mean=False,
+                mean_type=StatisticMeanType.NONE,
                 has_sum=True,
                 name=f"Phyn {fixture_name} Water",
                 source=DOMAIN,
                 statistic_id=statistic_id,
-                unit_of_measurement="gal",
+                unit_class=VolumeConverter.UNIT_CLASS,
+                unit_of_measurement=UnitOfVolume.GALLONS,
             )
 
             stats: list[StatisticData] = []

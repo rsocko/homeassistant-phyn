@@ -12,6 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.phyn.const import DOMAIN
 from custom_components.phyn.services import (
     phyn_import_fixture_statistics,
+    phyn_leak_test_service_setup,
     phyn_reload_fixture_statistics,
 )
 
@@ -133,3 +134,47 @@ async def test_import_fixture_statistics_returns_aggregated_totals(
     assert response["total_cleared_statistic_ids"] == 1
     assert response["total_corrections_detected"] == 2
     assert len(response["devices"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_registered_force_import_requires_explicit_timeframe(hass):
+    """Schema defaults must not turn an implicit range into an explicit one."""
+    device = _FakeDevice("device_1", {"imported_rows": 0})
+    hass.data[DOMAIN] = {"coordinator": SimpleNamespace(devices=[device])}
+    await phyn_leak_test_service_setup(hass)
+
+    with pytest.raises(HomeAssistantError, match="explicit timeframe"):
+        await hass.services.async_call(
+            DOMAIN, "import_fixture_statistics",
+            {"force_reimport": True}, blocking=True, return_response=True,
+        )
+
+    device.async_import_fixture_statistics.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected_days", "expected_force"),
+    [
+        ({}, 1, False),
+        ({"days": 365, "force_reimport": True}, 365, True),
+    ],
+)
+async def test_registered_import_preserves_default_and_explicit_ranges(
+    hass, data, expected_days, expected_force
+):
+    """The real service registry accepts both normal defaults and explicit backfills."""
+    device = _FakeDevice("device_1", {"imported_rows": 0})
+    hass.data[DOMAIN] = {"coordinator": SimpleNamespace(devices=[device])}
+    await phyn_leak_test_service_setup(hass)
+
+    await hass.services.async_call(
+        DOMAIN, "import_fixture_statistics",
+        data, blocking=True, return_response=True,
+    )
+
+    call = device.async_import_fixture_statistics.await_args
+    assert call.kwargs["to_datetime"] - call.kwargs["from_datetime"] == timedelta(
+        days=expected_days
+    )
+    assert call.kwargs["force_reimport"] is expected_force

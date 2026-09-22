@@ -304,7 +304,7 @@ async def phyn_leak_test_service_setup(hass: HomeAssistant):
             {
                 vol.Optional("entity_id"): cv.entity_id,
                 vol.Optional("device_id"): cv.string,
-                vol.Optional("days", default=1): vol.All(
+                vol.Optional("days"): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=365)
                 ),
                 vol.Optional("start_datetime"): cv.datetime,
