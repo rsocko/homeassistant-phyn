@@ -23,6 +23,11 @@ from custom_components.phyn.fixture_statistics import (
 )
 
 
+@pytest.fixture
+def mock_recorder_before_hass(recorder_db_url):
+    """Configure the test database before hass, independent of argument order."""
+
+
 def _metadata(statistic_id):
     return StatisticMetaData(
         mean_type=StatisticMeanType.NONE,
