@@ -134,7 +134,7 @@ class PhynPlusDevice(PhynDevice):
                 if (self._update_count % 60 == 0):
                     await self._update_firmware_information()
                 
-                if self._update_count % 15 == 0 and (
+                if not self._fixture_stopping and self._update_count % 15 == 0 and (
                     self._fixture_task is None or self._fixture_task.done()
                 ):
                     self._fixture_task = self._coordinator.hass.async_create_background_task(

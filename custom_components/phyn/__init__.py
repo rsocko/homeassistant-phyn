@@ -222,11 +222,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if CLIENT not in hass.data.get(DOMAIN, {}):
         return True
     client = hass.data[DOMAIN][CLIENT]
-    if coordinator := hass.data[DOMAIN].get("coordinator"):
-        await coordinator.async_shutdown()
     await _async_disconnect_mqtt(client)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        if coordinator := hass.data[DOMAIN].get("coordinator"):
+            await coordinator.async_shutdown()
         del hass.data[DOMAIN][CLIENT]
         del hass.data[DOMAIN]["coordinator"]
     return unload_ok

@@ -10,6 +10,8 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.phyn.devices.pp import PhynPlusDevice
 from custom_components.phyn.fixture_statistics import PhynFixtureStatisticsImporter
+from custom_components.phyn import async_unload_entry
+from custom_components.phyn.const import CLIENT, DOMAIN
 
 
 @pytest.mark.asyncio
@@ -172,5 +174,30 @@ async def test_history_work_does_not_block_sensor_refresh_and_stops_on_unload(ha
     await device.async_shutdown()
     assert stopped.is_set()
     assert device._fixture_task is None
+    device._update_count = 15
+    await device.async_update_data()
+    assert device._fixture_task is None
     with pytest.raises(HomeAssistantError, match="stopping"):
         await device.async_import_fixture_statistics()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unload_ok", [False, True])
+async def test_fixture_shutdown_only_after_successful_platform_unload(hass, monkeypatch, unload_ok):
+    coordinator = SimpleNamespace(async_shutdown=AsyncMock())
+    hass.data[DOMAIN] = {CLIENT: object(), "coordinator": coordinator}
+    monkeypatch.setattr(
+        "custom_components.phyn._async_disconnect_mqtt", AsyncMock()
+    )
+    monkeypatch.setattr(
+        hass.config_entries, "async_unload_platforms", AsyncMock(return_value=unload_ok)
+    )
+
+    assert await async_unload_entry(hass, SimpleNamespace(entry_id="test")) is unload_ok
+
+    if unload_ok:
+        coordinator.async_shutdown.assert_awaited_once()
+        assert "coordinator" not in hass.data[DOMAIN]
+    else:
+        coordinator.async_shutdown.assert_not_awaited()
+        assert hass.data[DOMAIN]["coordinator"] is coordinator
