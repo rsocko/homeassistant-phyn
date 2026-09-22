@@ -8,6 +8,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_recorder_block_till_done,
+)
 from homeassistant.components.recorder.models.statistics import StatisticMeanType
 from homeassistant.components.recorder.statistics import (
     StatisticMetaData,
@@ -41,7 +44,7 @@ def _metadata(statistic_id):
 
 
 async def _read_rows(hass, recorder, start, statistic_id):
-    await recorder.async_block_till_done()
+    await async_recorder_block_till_done(hass)
     result = await recorder.async_add_executor_job(
         statistics_during_period,
         hass,
@@ -69,7 +72,7 @@ async def test_absolute_upsert_preserves_older_rows(hass, recorder_mock):
             {"start": later, "sum": 12.0, "state": 12.0},
         ],
     )
-    await recorder_mock.async_block_till_done()
+    await async_recorder_block_till_done(hass)
 
     replacement = [{"start": later, "sum": 13.0, "state": 13.0}]
     async_add_external_statistics(hass, metadata, replacement)
@@ -100,7 +103,7 @@ async def test_recorder_clear_is_callback_and_deletes_whole_series(hass, recorde
         [statistic_id],
         on_done=lambda: hass.loop.call_soon_threadsafe(completed.set),
     )
-    await recorder_mock.async_block_till_done()
+    await async_recorder_block_till_done(hass)
     await asyncio.wait_for(completed.wait(), timeout=5)
 
     assert result is None
@@ -120,7 +123,7 @@ async def test_importer_state_survives_restore_and_same_hour_update(hass, record
         "total_flow": 1.0,
         "user_fixture_label": "Kitchen",
     }])
-    await recorder_mock.async_block_till_done()
+    await async_recorder_block_till_done(hass)
     restored = PhynFixtureStatisticsImporter(hass, "test_device")
     await restored.async_initialize()
 
