@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.phyn.devices.pp import PhynPlusDevice
 from custom_components.phyn.fixture_statistics import PhynFixtureStatisticsImporter
@@ -17,18 +18,16 @@ async def test_initialize_does_not_reload_over_current_state(hass):
     importer = PhynFixtureStatisticsImporter(hass, "device_1")
     importer._store = SimpleNamespace(
         async_load=AsyncMock(return_value={
-            "fixture_sums": {"Kitchen": 10.0},
-            "last_event_ms": 1000,
+            "schema": 2, "events": {}, "fixture_ids": {}, "rows": {}, "pending": None,
         })
     )
 
     await importer.async_initialize()
-    importer._state.fixture_sums["Kitchen"] = 12.0
-    importer._state.last_event_ms = 2000
+    importer._state.events["event"] = {"fixture": "Kitchen", "end_ms": 2000, "volume": 12.0}
     await importer.async_initialize()
 
     importer._store.async_load.assert_awaited_once()
-    assert importer._state.fixture_sums == {"Kitchen": 12.0}
+    assert importer._state.events["event"]["volume"] == 12.0
     assert importer.current_checkpoint_ms() == 2000
 
 
@@ -142,3 +141,36 @@ async def test_manual_imports_do_not_overlap(hass):
     )
 
     assert peak == 1
+
+
+@pytest.mark.asyncio
+async def test_history_work_does_not_block_sensor_refresh_and_stops_on_unload(hass, monkeypatch):
+    device = PhynPlusDevice(
+        SimpleNamespace(hass=hass, api_client=SimpleNamespace()),
+        "home_1", "device_1", "PP1",
+    )
+    for name in (
+        "_update_device_state", "_update_alerts", "_update_alert_events",
+        "_update_autoshutoff", "_update_device_preferences", "_update_consumption_data",
+        "_update_device_health_tests", "_update_firmware_information",
+    ):
+        monkeypatch.setattr(device, name, AsyncMock())
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def history():
+        try:
+            started.set()
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    monkeypatch.setattr(device, "_update_fixture_statistics", history)
+    await device.async_update_data()
+    assert device._update_count == 1
+    await asyncio.wait_for(started.wait(), timeout=1)
+    await device.async_shutdown()
+    assert stopped.is_set()
+    assert device._fixture_task is None
+    with pytest.raises(HomeAssistantError, match="stopping"):
+        await device.async_import_fixture_statistics()

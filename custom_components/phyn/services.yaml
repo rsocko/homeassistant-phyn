@@ -51,14 +51,14 @@ import_fixture_statistics:
         datetime:
     force_reimport:
       name: Force reimport
-      description: Clear existing fixture stats for the target device(s) and rebuild from the requested timeframe
+      description: Reconcile observed events without clearing older history; requires an explicit timeframe
       required: false
       default: false
       selector:
         boolean:
     dry_run:
       name: Dry run
-      description: Preview what would be imported/cleared without changing statistics or checkpoint state
+      description: Preview observed-event reconciliation without changing statistics or saved evidence
       required: false
       default: false
       selector:
@@ -66,7 +66,7 @@ import_fixture_statistics:
 
 reload_fixture_statistics:
   name: Reload corrected fixture statistics
-  description: Rebuild corrected/historical fixture usage statistics for the requested timeframe
+  description: Reconcile last-observed event corrections while preserving unrelated history; cloud completeness is not guaranteed
   fields:
     entity_id:
       name: Entity
@@ -104,7 +104,7 @@ reload_fixture_statistics:
         datetime:
     dry_run:
       name: Dry run
-      description: Preview rows/events/clears/corrections without changing statistics
+      description: Preview rows and observed corrections without changing statistics
       required: false
       default: false
       selector:

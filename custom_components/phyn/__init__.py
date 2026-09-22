@@ -185,6 +185,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_registry.async_remove_device(dev_entry.id)
             _LOGGER.debug("Removed stale device %s", phyn_ids)
 
+    coordinator = None
     try:
         await client.mqtt.connect()
 
@@ -210,6 +211,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception:
         # Ensure MQTT is disconnected on any setup failure to avoid leaking
         # open connections across repeated failed setups.
+        if coordinator is not None:
+            await coordinator.async_shutdown()
         await _async_disconnect_mqtt(client)
         raise
 
@@ -219,6 +222,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if CLIENT not in hass.data.get(DOMAIN, {}):
         return True
     client = hass.data[DOMAIN][CLIENT]
+    if coordinator := hass.data[DOMAIN].get("coordinator"):
+        await coordinator.async_shutdown()
     await _async_disconnect_mqtt(client)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:

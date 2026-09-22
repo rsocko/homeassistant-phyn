@@ -1,12 +1,13 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
-from asyncio import Lock, timeout
+from asyncio import CancelledError, Lock, Task, timeout
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.exceptions import HomeAssistantError
 import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
@@ -81,7 +82,8 @@ class PhynPlusDevice(PhynDevice):
         self._rt_device_state: dict[str, Any] = {}
         self._state_lock: Lock = Lock()
         self._fixture_import_lock: Lock = Lock()
-        self._fixture_reconciliation_days: int = 7
+        self._fixture_task: Task[None] | None = None
+        self._fixture_stopping = False
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
             self._phyn_device_id,
@@ -124,9 +126,6 @@ class PhynPlusDevice(PhynDevice):
                 await self._update_autoshutoff()
                 await self._update_device_preferences()
                 await self._update_consumption_data()
-                if self._update_count % 15 == 0:
-                    await self._update_fixture_statistics()
-
                 #Update every 10 minutes
                 if self._update_count % 10 == 0:
                     await self._update_device_health_tests()
@@ -135,6 +134,12 @@ class PhynPlusDevice(PhynDevice):
                 if (self._update_count % 60 == 0):
                     await self._update_firmware_information()
                 
+                if self._update_count % 15 == 0 and (
+                    self._fixture_task is None or self._fixture_task.done()
+                ):
+                    self._fixture_task = self._coordinator.hass.async_create_background_task(
+                        self._update_fixture_statistics(), f"Phyn fixture import {self.id}"
+                    )
                 self._update_count += 1
         except (RequestError) as error:
             raise UpdateFailed(error) from error
@@ -260,6 +265,8 @@ class PhynPlusDevice(PhynDevice):
     ) -> dict[str, int]:
         """Restore state and serialize manual and recurring fixture imports."""
         async with self._fixture_import_lock:
+            if self._fixture_stopping:
+                raise HomeAssistantError("Phyn fixture imports are stopping")
             await self._fixture_stats_importer.async_initialize()
             return await self._async_import_fixture_statistics(
                 from_datetime, to_datetime, force_reimport, dry_run
@@ -287,17 +294,7 @@ class PhynPlusDevice(PhynDevice):
             from_dt = from_dt.replace(tzinfo=timezone.utc)
 
         if from_dt >= to_dt:
-            checkpoint = self._fixture_stats_importer.current_checkpoint_ms()
-            return {
-                "imported_rows": 0,
-                "events_fetched": 0,
-                "events_newer_than_checkpoint": 0,
-                "checkpoint_before_ms": checkpoint,
-                "checkpoint_after_ms": checkpoint,
-                "cleared_statistic_ids": 0,
-                "force_reimport": 1 if force_reimport else 0,
-                "dry_run": 1 if dry_run else 0,
-            }
+            raise HomeAssistantError("Fixture import start must be before its end")
 
         events = await self._coordinator.api_client.device.get_water_usage_events(
             self._phyn_device_id,
@@ -317,33 +314,7 @@ class PhynPlusDevice(PhynDevice):
     async def _update_fixture_statistics(self) -> None:
         """Fetch fixture usage events and import into HA long-term statistics."""
         try:
-            now_utc = dt_util.now(timezone.utc)
-            reconciliation_start = now_utc - timedelta(days=self._fixture_reconciliation_days)
-            reconciliation_preview = await self.async_import_fixture_statistics(
-                from_datetime=reconciliation_start,
-                to_datetime=now_utc,
-                force_reimport=True,
-                dry_run=True,
-            )
-            corrections_detected = int(
-                reconciliation_preview.get("corrections_detected", 0)
-            )
-
-            if corrections_detected > 0:
-                result = await self.async_import_fixture_statistics(
-                    from_datetime=reconciliation_start,
-                    to_datetime=now_utc,
-                    force_reimport=True,
-                )
-                LOGGER.info(
-                    "Recurring fixture reconciliation for device %s: corrections=%s, rows=%s, cleared=%s",
-                    self._phyn_device_id,
-                    corrections_detected,
-                    int(result.get("imported_rows", 0)),
-                    int(result.get("cleared_statistic_ids", 0)),
-                )
-            else:
-                result = await self.async_import_fixture_statistics()
+            result = await self.async_import_fixture_statistics()
 
             imported = int(result.get("imported_rows", 0))
             events_fetched = int(result.get("events_fetched", 0))
@@ -393,6 +364,19 @@ class PhynPlusDevice(PhynDevice):
                 self._coordinator.hass,
                 f"Recurring fixture import failed for {self._phyn_device_id}: {err}",
             )
+
+    async def async_shutdown(self) -> None:
+        """Stop history work without discarding any persisted pending import."""
+        self._fixture_stopping = True
+        if self._fixture_task is not None:
+            self._fixture_task.cancel()
+            try:
+                await self._fixture_task
+            except CancelledError:
+                pass
+            self._fixture_task = None
+        async with self._fixture_import_lock:
+            pass
     
     @property
     def autoshutoff_enabled(self) -> bool | None:
