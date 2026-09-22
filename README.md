@@ -195,39 +195,70 @@ The base entity classes have been consolidated into a single canonical location:
 
 ## Development and Testing
 
-This integration includes automated tests to ensure quality and reliability.
+See the [testing runbook](docs/testing-runbook.md) for the Linux-first editable
+library loop, provenance checks, isolated HA Core development and release gates.
 
 ### Running Tests Locally
 
+Use Linux and Python 3.14. The pinned test harness
+`pytest-homeassistant-custom-component==0.13.366` selects HA 2026.9.3.
+**Published aiophyn 2026.9.1 currently conflicts with that HA dependency graph**
+(`pycognito<2023` versus `pycognito==2024.5.1`); the released-dependency lane
+must fail visibly until a compatible public release is approved.
+
+For paired development, create a fresh environment and resolve the explicitly
+selected editable aiophyn checkout **together with** the test requirements:
+
 ```bash
-# Install test dependencies
-pip install -r requirements_test.txt
-
-# Run all tests
-pytest tests/
-
-# Run with coverage report
-pytest tests/ --cov=custom_components.phyn --cov-report=term-missing -v
-
-# Run specific test file
-pytest tests/test_config_flow_helpers.py -v
+# In a fresh, activated Linux Python 3.14 environment:
+python -m pip install -r requirements_test.txt -e "$AIOPHYN_CHECKOUT"
+python -m pip check
+# Verify import/direct_url provenance as shown in the runbook before testing.
+python -m pytest tests/ -v --disable-socket --allow-unix-socket
 ```
 
-For manual fixture backfills via `phyn.import_fixture_statistics`, use `force_reimport: true` with an explicit timeframe (`days` or `start_datetime`/`end_datetime`) when you need to rebuild historical cumulative stats after corrections. Use `dry_run: true` first to preview rows/events/clears without changing data.
+Candidate and published distributions can report the same version; an import
+path and exact source commit are required evidence. Do not install incompatible
+published requirements first and override afterward, bypass dependencies, or
+pip-install manually into an HA OS host/production environment.
+
+Fixture imports retain accepted contributions for all imported history, without
+expiry. Corrections use the last locally observed contribution per device-scoped
+event ID, not a proven newest server revision. Omitted events are not deleted.
+`force_reimport: true` and reload reconcile observations without clearing whole
+series; use `dry_run: true` with an explicit timeframe to preview writes.
+The 1-365 day/date request window is not a completeness guarantee. Labels describe
+fixture categories, not proven individual household fixtures. Unsupported
+developer state pauses fixture statistics only, with a persistent notice; normal
+sensors and controls continue. See the runbook for readback/recovery limits;
+there is no automatic migration or history clear.
 
 This fork combines the fixture-usage features with upstream `main` at `10e4409`
-(2026-09-13). Fixture imports use the published `aiophyn>=2026.9.1` millisecond
-timestamp API; the older datetime-based API from the `aiophyn` feature branch is
-no longer required. Existing fixture statistic IDs and stored checkpoints are
-unchanged. The HACS instructions above install upstream, not this fork's
-additional fixture-usage features.
+(2026-09-13). Fixture imports require the epoch-millisecond `from_ts`/`to_ts`
+library API even if a candidate also supports datetime bounds. The HACS
+instructions above install upstream, not this fork's fixture-usage features.
+HACS installs the integration; HA installs its manifest dependency. An immutable
+development artifact and later stable PyPI release must pass separate gates;
+neither is selected here. Do not install two integrations with domain `phyn`
+side by side.
 
 ### Continuous Integration
 
-Tests run automatically on every pull request via GitHub Actions. The test suite validates:
-- Config flow (user setup, authentication, error handling)
-- Integration setup and teardown
-- Configuration migration
-- Reauth and reconfigure flows
+Normal PR/main Validation keeps hassfest, HACS, translations and mypy checks,
+plus the full offline suite against an explicit published aiophyn baseline.
+The public dependency conflict above remains a failing gate, independent of
+candidate results.
 
-This ensures compatibility with Home Assistant 2026.6.4+ and helps maintain Bronze tier quality standards.
+The existing Phase 2 runner supports published packages or a full immutable
+40-hex commit in `rsocko/aiophyn`, with no moving candidate default. It defaults
+to all tests; the targeted selector includes Recorder and lifecycle cases.
+Manual dispatch requires the workflow on the default branch; until registered,
+the separately authorized isolated cloud-validation branch is the validation
+route, not evidence of a tested dispatch.
+
+Coverage includes fixture aggregation/corrections, registered services, installed
+library API boundaries, real Recorder readback/recovery, and fixture lifecycle/
+unload behavior, alongside basic integration-file checks. This is not full
+config-flow, migration, reauth/reconfigure or live-device coverage, and does not
+establish HA 2026.6.4 minimum-version support or Bronze quality certification.
+The runbook records exact candidate-only evidence and remaining release gates.
