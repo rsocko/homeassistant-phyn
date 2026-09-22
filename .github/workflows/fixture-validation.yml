@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      VALIDATION_LANE: interim-library-ab
-      AIOPHYN_SHA: 20ec3f3a44ecaeaff50c9839576107d8f9ba6000
+      VALIDATION_LANE: final-library-abc
+      AIOPHYN_SHA: 972f16c8fb0ede1a2f3365680a972f70c47b6fe7
     defaults:
       run:
         shell: bash
@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install immutable interim A/B candidate with all dependencies
+      - name: Install immutable final A/B/C candidate with all dependencies
         run: |
           mkdir -p validation-results
           {
