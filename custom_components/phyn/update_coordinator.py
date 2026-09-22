@@ -217,3 +217,9 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
         """Setup devices."""
         for device in self._devices:
             await device.async_setup()
+
+    async def async_shutdown(self) -> None:
+        """Drain owned fixture tasks before unloading the integration."""
+        for device in self._devices:
+            if isinstance(device, PhynPlusDevice):
+                await device.async_shutdown()

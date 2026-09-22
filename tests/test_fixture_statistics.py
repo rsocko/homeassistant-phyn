@@ -72,7 +72,12 @@ def test_build_hourly_fixture_totals_aggregates_and_filters_old_events():
 def test_fixture_statistic_id_is_stable_and_sanitized():
     """Statistic IDs should be deterministic and URL-safe."""
     statistic_id = fixture_statistic_id("28F53741CBBA", "Master Bath Toilet")
-    assert statistic_id == "phyn:28f53741cbba_master_bath_toilet_water"
+    assert statistic_id.startswith("phyn:28f53741cbba_master_bath_toilet_")
+    assert statistic_id.endswith("_water")
+    assert statistic_id == fixture_statistic_id("28F53741CBBA", "Master Bath Toilet")
+    assert fixture_statistic_id("device", "Bath-Sink") != fixture_statistic_id("device", "BathSink")
+    assert fixture_statistic_id("device", "浴室") != fixture_statistic_id("device", "!!!")
+    assert fixture_statistic_id("device", "浴室").isascii()
 
 
 def test_extract_event_id_accepts_event_id_or_id_fields():

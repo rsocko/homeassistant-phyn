@@ -161,7 +161,10 @@ async def _async_execute_fixture_statistics_import(
             start_dt = end_dt - timedelta(days=days)
 
         if entity_id:
-            target_device_id = _resolve_device_id_from_entity(service.hass, entity_id)
+            entity_device_id = _resolve_device_id_from_entity(service.hass, entity_id)
+            if target_device_id and target_device_id != entity_device_id:
+                raise HomeAssistantError("entity_id and device_id select different Phyn devices")
+            target_device_id = entity_device_id
 
         target_devices = []
         for device in coordinator.devices:
@@ -242,15 +245,17 @@ async def _async_execute_fixture_statistics_import(
             dry_run,
         )
 
-        note = None
-        if total_rows == 0 and total_events_fetched > 0 and total_events_newer_than_checkpoint == 0:
-            note = "No rows imported because all events were at or before the importer checkpoint. Use a force-reimport workflow to rebuild historical ranges."
+        note = (
+            "Imported observations are not proof of complete cloud history. "
+            "Corrections use the last observed contribution for each device-scoped event ID; "
+            "absent events are retained. Fixture series represent labels, not physical fixture identities."
+        )
         if force_reimport and not dry_run:
-            note = "Force reimport mode enabled: cleared existing fixture statistics for target devices and rebuilt from requested timeframe."
+            note += " Force mode replayed observed events without clearing historical statistics."
         elif force_reimport and dry_run:
-            note = "Dry run: no data was modified. Response shows projected clears/imports for force reimport mode."
+            note += " Dry run: no data was modified; projected reconciliation only."
         elif dry_run:
-            note = "Dry run: no data was modified. Response shows projected imports for incremental mode."
+            note += " Dry run: no data was modified; projected imports only."
 
         await async_add_logbook_entry(
             service.hass,
