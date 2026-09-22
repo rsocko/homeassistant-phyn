@@ -1,0 +1,84 @@
+name: Isolated fixture runtime validation
+
+on:
+  push:
+    branches:
+      - rsocko-phyn-cloud-validation
+
+permissions:
+  contents: read
+
+jobs:
+  offline-home-assistant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout exact integration revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install published-library validation environment
+        run: |
+          mkdir -p validation-results
+          python -m pip install --report validation-results/install.json \
+            -r requirements_test_public.txt \
+            pytest-homeassistant-custom-component==0.13.366 \
+            homeassistant==2026.9.3 \
+            aiophyn==2026.9.1
+          python -m pip check
+
+      - name: Record exact source and dependency provenance
+        run: |
+          {
+            git rev-parse HEAD
+            git log -1 --format=fuller
+            python --version
+            python - <<'PY'
+          from importlib.metadata import distribution
+
+          for name, expected in (
+              ("homeassistant", "2026.9.3"),
+              ("pytest-homeassistant-custom-component", "0.13.366"),
+              ("aiophyn", "2026.9.1"),
+          ):
+              package = distribution(name)
+              print(f"{name}=={package.version}")
+              print(f"location: {package.locate_file('')}")
+              direct_url = package.read_text("direct_url.json")
+              print(f"direct_url: {direct_url}")
+              assert package.version == expected
+              assert direct_url is None, f"{name} must use the published package"
+          PY
+            python -m pip freeze
+          } | tee validation-results/provenance.txt
+
+      - name: Collect offline tests with the real Home Assistant harness
+        run: |
+          python -m pytest tests --collect-only -q \
+            --disable-socket --allow-unix-socket \
+            | tee validation-results/collection.txt
+
+      - name: Execute offline Recorder, service, and lifecycle tests
+        run: |
+          python -m pytest tests -v --tb=short \
+            --disable-socket --allow-unix-socket \
+            --junitxml=validation-results/junit.xml \
+            | tee validation-results/pytest.txt
+
+      - name: Preserve diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-validation-${{ github.sha }}-${{ github.run_attempt }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 7
