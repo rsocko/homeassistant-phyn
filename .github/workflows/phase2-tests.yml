@@ -11,25 +11,20 @@ on:
         options:
           - repo
           - pypi
-      aiophyn_repo:
-        description: "aiophyn repo (owner/name) when source=repo"
-        required: true
-        default: "jordanruthe/aiophyn"
-        type: string
-      aiophyn_ref:
-        description: "aiophyn ref (branch/tag/SHA) when source=repo"
-        required: true
-        default: "main"
+      aiophyn_sha:
+        description: "Full 40-hex commit in rsocko/aiophyn (required only for repo)"
+        required: false
+        default: ""
         type: string
       aiophyn_version:
-        description: "aiophyn version when source=pypi"
-        required: true
+        description: "Published numeric dotted version (used only for pypi)"
+        required: false
         default: "2026.9.1"
         type: string
       test_scope:
         description: "Which tests to run"
         required: true
-        default: "phase2"
+        default: "all"
         type: choice
         options:
           - phase2
@@ -40,44 +35,148 @@ permissions:
 
 jobs:
   tests:
+    name: Offline tests (${{ inputs.aiophyn_source }}, ${{ inputs.test_scope }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AIOPHYN_SOURCE: ${{ inputs.aiophyn_source }}
+      AIOPHYN_SHA: ${{ inputs.aiophyn_sha }}
+      AIOPHYN_VERSION: ${{ inputs.aiophyn_version }}
+      TEST_SCOPE: ${{ inputs.test_scope }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout homeassistant-phyn
         uses: actions/checkout@v4
-
-      - name: Checkout aiophyn repository
-        if: ${{ inputs.aiophyn_source == 'repo' }}
-        uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.aiophyn_repo }}
-          ref: ${{ inputs.aiophyn_ref }}
-          path: .aiophyn
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.14"
 
+      - name: Validate source and scope
+        id: selection
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          source = os.environ["AIOPHYN_SOURCE"]
+          if source not in {"pypi", "repo"}:
+              raise SystemExit("aiophyn_source must be pypi or repo")
+          if os.environ["TEST_SCOPE"] not in {"all", "phase2"}:
+              raise SystemExit("test_scope must be all or phase2")
+          if source == "repo":
+              sha = os.environ["AIOPHYN_SHA"]
+              if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                  raise SystemExit("repo mode requires a full 40-hex aiophyn_sha")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  output.write(f"sha={sha.lower()}\n")
+              print(f"Selected rsocko/aiophyn at {sha.lower()}")
+          else:
+              version = os.environ["AIOPHYN_VERSION"]
+              if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version):
+                  raise SystemExit("pypi mode requires a numeric dotted aiophyn_version")
+              print(f"Selected published aiophyn=={version}")
+          print(f"test_scope={os.environ['TEST_SCOPE']}")
+          PY
+
+      - name: Checkout aiophyn repository
+        if: ${{ inputs.aiophyn_source == 'repo' }}
+        uses: actions/checkout@v4
+        with:
+          repository: rsocko/aiophyn
+          ref: ${{ steps.selection.outputs.sha }}
+          path: .aiophyn
+          persist-credentials: false
+
+      - name: Verify candidate checkout
+        if: ${{ inputs.aiophyn_source == 'repo' }}
+        env:
+          EXPECTED_SHA: ${{ steps.selection.outputs.sha }}
+        run: |
+          actual_sha="$(git -C .aiophyn rev-parse HEAD)"
+          printf 'aiophyn checkout=%s\n' "$actual_sha"
+          test "$actual_sha" = "$EXPECTED_SHA"
+          test -z "$(git -C .aiophyn status --porcelain)"
+
       - name: Install dependencies (repo source)
         if: ${{ inputs.aiophyn_source == 'repo' }}
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements_test.txt -e ./.aiophyn
+          python -m pip install -r requirements_test.txt -e ./.aiophyn
 
       - name: Install dependencies (pypi source)
         if: ${{ inputs.aiophyn_source == 'pypi' }}
-        env:
-          AIOPHYN_VERSION: ${{ inputs.aiophyn_version }}
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements_test_public.txt "aiophyn==$AIOPHYN_VERSION"
+          python -m pip install -r requirements_test_public.txt "aiophyn==$AIOPHYN_VERSION"
+
+      - name: Check dependencies and provenance
+        env:
+          EXPECTED_SHA: ${{ steps.selection.outputs.sha }}
+        run: |
+          python -m pip check
+          git rev-parse HEAD
+          python --version
+          python - <<'PY'
+          from importlib.metadata import distribution
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          import aiophyn
+
+          for name, version in (
+              ("homeassistant", "2026.9.3"),
+              ("pytest-homeassistant-custom-component", "0.13.366"),
+          ):
+              package = distribution(name)
+              print(f"{name}=={package.version}")
+              assert package.version == version
+          package = distribution("aiophyn")
+          direct_url = package.read_text("direct_url.json")
+          imported = Path(aiophyn.__file__).resolve()
+          print(f"aiophyn=={package.version}\nimport={imported}\ndirect_url={direct_url}")
+          if os.environ["AIOPHYN_SOURCE"] == "repo":
+              checkout = Path(".aiophyn").resolve()
+              source = json.loads(direct_url or "{}")
+              assert source.get("url") == checkout.as_uri(), source
+              assert source.get("dir_info", {}).get("editable") is True, source
+              assert imported.is_relative_to(checkout), imported
+              actual_sha = subprocess.check_output(
+                  ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+              ).strip()
+              assert actual_sha == os.environ["EXPECTED_SHA"], actual_sha
+              assert not subprocess.check_output(
+                  ["git", "-C", str(checkout), "status", "--porcelain"], text=True
+              ).strip(), "Candidate checkout was modified"
+              print(f"aiophyn commit={actual_sha}")
+          else:
+              assert package.version == os.environ["AIOPHYN_VERSION"]
+              assert direct_url is None, "Published lane must not use a direct/editable source"
+              installed = Path(package.locate_file("aiophyn/__init__.py")).resolve()
+              assert imported == installed, (imported, installed)
+          PY
+          python -m pip freeze
 
       - name: Run Phase 2 tests
         if: ${{ inputs.test_scope == 'phase2' }}
         run: |
-          pytest tests/test_fixture_statistics.py tests/test_fixture_statistics_importer.py tests/test_services_fixture_statistics.py tests/test_upstream_compatibility.py -v
+          python -m pytest \
+            tests/test_fixture_statistics.py \
+            tests/test_fixture_statistics_importer.py \
+            tests/test_services_fixture_statistics.py \
+            tests/test_upstream_compatibility.py \
+            tests/test_fixture_statistics_recorder.py \
+            tests/test_fixture_statistics_lifecycle.py \
+            -v --disable-socket --allow-unix-socket
 
       - name: Run full test suite
         if: ${{ inputs.test_scope == 'all' }}
         run: |
-          pytest tests/ -v
+          python -m pytest tests/ -v --disable-socket --allow-unix-socket

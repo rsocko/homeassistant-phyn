@@ -15,12 +15,16 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
         - uses: "actions/checkout@v4"
+          with:
+            persist-credentials: false
         - uses: "home-assistant/actions/hassfest@master"
         
   validate-hacs:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
+        with:
+          persist-credentials: false
       - name: HACS validation
         uses: "hacs/action@main"
         with:
@@ -32,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.14
         uses: actions/setup-python@v5
@@ -47,6 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       
       - name: Set up Python 3.14
         uses: actions/setup-python@v5
@@ -62,26 +70,61 @@ jobs:
         run: |
           mypy custom_components/phyn --ignore-missing-imports --exclude config_flow.py
   
-  # Run basic smoke tests (no coverage, just sanity checks)
-  smoke-test:
+  released-dependency-tests:
+    name: Full offline suite with published aiophyn
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AIOPHYN_VERSION: "2026.9.1"
     strategy:
       matrix:
         python-version: ["3.14"]
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       
-      - name: Install dependencies
+      - name: Resolve published baseline with the Home Assistant harness
         run: |
+          git rev-parse HEAD
+          python --version
+          printf 'source=PyPI aiophyn==%s\n' "$AIOPHYN_VERSION"
           python -m pip install --upgrade pip
-          pip install -r requirements_test.txt
+          python -m pip install -r requirements_test_public.txt "aiophyn==$AIOPHYN_VERSION"
 
-      - name: Run basic smoke tests (no coverage)
+      - name: Check dependencies and published provenance
         run: |
-          pytest tests/ -v
+          python -m pip check
+          python - <<'PY'
+          from importlib.metadata import distribution
+          import os
+          from pathlib import Path
+
+          import aiophyn
+
+          for name, expected in (
+              ("homeassistant", "2026.9.3"),
+              ("pytest-homeassistant-custom-component", "0.13.366"),
+              ("aiophyn", os.environ["AIOPHYN_VERSION"]),
+          ):
+              package = distribution(name)
+              direct_url = package.read_text("direct_url.json")
+              print(f"{name}=={package.version}\ndirect_url={direct_url}")
+              assert package.version == expected
+              assert direct_url is None, f"{name} must use the published package"
+          imported = Path(aiophyn.__file__).resolve()
+          installed = Path(distribution("aiophyn").locate_file("aiophyn/__init__.py")).resolve()
+          print(f"aiophyn import={imported}")
+          assert imported == installed, (imported, installed)
+          PY
+          python -m pip freeze
+
+      - name: Run full offline suite (no coverage)
+        run: |
+          python -m pytest tests/ -v --disable-socket --allow-unix-socket
