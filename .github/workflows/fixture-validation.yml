@@ -12,6 +12,9 @@ jobs:
   offline-home-assistant:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      VALIDATION_LANE: interim-library-ab
+      AIOPHYN_SHA: 20ec3f3a44ecaeaff50c9839576107d8f9ba6000
     defaults:
       run:
         shell: bash
@@ -26,19 +29,21 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install published-library validation environment
+      - name: Install immutable interim A/B candidate with all dependencies
         run: |
           mkdir -p validation-results
           {
             git rev-parse HEAD
             git log -2 --format=fuller
             python --version
+            printf 'lane=%s\naiophyn_sha=%s\n' "$VALIDATION_LANE" "$AIOPHYN_SHA"
           } | tee validation-results/source.txt
           python -m pip install --report validation-results/install.json \
             -r requirements_test_public.txt \
             pytest-homeassistant-custom-component==0.13.366 \
             homeassistant==2026.9.3 \
-            aiophyn==2026.9.1 2>&1 | tee validation-results/install.txt
+            "aiophyn @ https://github.com/rsocko/aiophyn/archive/${AIOPHYN_SHA}.zip" \
+            2>&1 | tee validation-results/install.txt
           python -m pip check | tee validation-results/pip-check.txt
 
       - name: Record exact source and dependency provenance
@@ -49,6 +54,11 @@ jobs:
             python --version
             python - <<'PY'
           from importlib.metadata import distribution
+          import json
+          import os
+          from pathlib import Path
+
+          import aiophyn
 
           for name, expected in (
               ("homeassistant", "2026.9.3"),
@@ -61,7 +71,20 @@ jobs:
               direct_url = package.read_text("direct_url.json")
               print(f"direct_url: {direct_url}")
               assert package.version == expected
-              assert direct_url is None, f"{name} must use the published package"
+              if name == "aiophyn":
+                  source = json.loads(direct_url)
+                  expected_url = (
+                      "https://github.com/rsocko/aiophyn/archive/"
+                      f"{os.environ['AIOPHYN_SHA']}.zip"
+                  )
+                  assert source["url"] == expected_url, source
+                  assert source["archive_info"]["hashes"]["sha256"]
+                  imported = Path(aiophyn.__file__).resolve()
+                  installed = Path(package.locate_file("aiophyn/__init__.py")).resolve()
+                  print(f"imported aiophyn: {imported}")
+                  assert imported == installed, (imported, installed)
+              else:
+                  assert direct_url is None, f"{name} must use the published package"
           PY
             python -m pip freeze
           } | tee validation-results/provenance.txt
