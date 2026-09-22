@@ -102,6 +102,71 @@ jobs:
             --junitxml=validation-results/junit.xml \
             | tee validation-results/pytest.txt
 
+      - name: Checkout exact candidate for equivalent Phase 2 editable steps
+        uses: actions/checkout@v4
+        with:
+          repository: rsocko/aiophyn
+          ref: ${{ env.AIOPHYN_SHA }}
+          path: .aiophyn
+          persist-credentials: false
+
+      - name: Execute committed Phase 2 commands in a fresh editable environment
+        run: |
+          python - <<'PY' 2>&1 | tee validation-results/phase2-equivalent.txt
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          import yaml
+
+          workflow = yaml.safe_load(Path(".github/workflows/phase2-tests.yml").read_text())
+          steps = {
+              step["name"]: step["run"]
+              for step in workflow["jobs"]["tests"]["steps"]
+              if "run" in step
+          }
+          environment = Path(os.environ["RUNNER_TEMP"]) / "phase2-editable"
+          subprocess.run([sys.executable, "-m", "venv", str(environment)], check=True)
+          env = os.environ.copy()
+          env.update(
+              PATH=f"{environment / 'bin'}{os.pathsep}{env['PATH']}",
+              VIRTUAL_ENV=str(environment),
+              AIOPHYN_SOURCE="repo",
+              AIOPHYN_VERSION="",
+              EXPECTED_SHA=env["AIOPHYN_SHA"],
+              GITHUB_OUTPUT=str(Path(env["RUNNER_TEMP"]) / "phase2-selection-output"),
+          )
+
+          def run_step(name):
+              print(f"\nEquivalent committed Phase 2 step: {name}", flush=True)
+              subprocess.run(
+                  ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", steps[name]],
+                  env=env,
+                  check=True,
+              )
+
+          env["TEST_SCOPE"] = "all"
+          for name in (
+              "Validate source and scope",
+              "Verify candidate checkout",
+              "Install dependencies (repo source)",
+              "Check dependencies and provenance",
+              "Run full test suite",
+          ):
+              run_step(name)
+          env["TEST_SCOPE"] = "phase2"
+          run_step("Validate source and scope")
+          run_step("Run Phase 2 tests")
+          help_result = subprocess.run(
+              ["hass", "--help"], env=env, check=True, text=True, stdout=subprocess.PIPE
+          )
+          print(help_result.stdout, flush=True)
+          Path("validation-results/hass-help.txt").write_text(help_result.stdout)
+          assert "--skip-pip-packages" in help_result.stdout
+          print("Verified selective --skip-pip-packages CLI flag; no HA startup.")
+          PY
+
       - name: Preserve diagnostic evidence
         if: always()
         uses: actions/upload-artifact@v4
