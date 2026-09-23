@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      VALIDATION_LANE: final-library-abc
-      AIOPHYN_SHA: 972f16c8fb0ede1a2f3365680a972f70c47b6fe7
+      VALIDATION_LANE: attribution-followup
+      AIOPHYN_SHA: 42d35d61e338da4b34b5074490782a80419a31cd
     defaults:
       run:
         shell: bash
@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install immutable final A/B/C candidate with all dependencies
+      - name: Install immutable library candidate with all dependencies
         run: |
           mkdir -p validation-results
           {

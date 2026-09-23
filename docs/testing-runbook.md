@@ -204,9 +204,9 @@ until it is registered on the default branch. This development layer does not
 register it or authorize a default-branch change. The former isolated validation
 branch was consolidated and deleted. The authorized route is now
 `fixture-validation.yml` on pushes to `feature/fixture-usage`, using immutable
-aiophyn `972f16c8fb0ede1a2f3365680a972f70c47b6fe7`. It runs offline archive and
-editable suites, without Phyn credentials or live-device calls. This is not
-validation of newer, unpushed library diagnostics. Record exact checked-out commits and
+aiophyn `42d35d61e338da4b34b5074490782a80419a31cd`. It runs offline archive and
+editable suites, without Phyn credentials or live-device calls. Validation covers
+only the selected commit, not future library changes. Record exact checked-out commits and
 whether it ran equivalent steps: that is not proof that manual dispatch itself
 was exercised. Final library changes and tooling changes require a new paired
 run, not reuse of an earlier green result.
