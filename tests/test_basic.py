@@ -18,6 +18,13 @@ def test_manifest_exists():
     assert len(manifest["version"]) > 0
 
 
+def test_hacs_and_manifest_have_same_supported_ha_minimum():
+    root = Path(__file__).parent.parent
+    manifest = json.loads((root / "custom_components" / "phyn" / "manifest.json").read_text())
+    hacs = json.loads((root / "hacs.json").read_text())
+    assert hacs["homeassistant"] == manifest["homeassistant"] == "2026.9.3"
+
+
 def test_init_file_exists():
     """Test that __init__.py exists."""
     init_path = Path(__file__).parent.parent / "custom_components" / "phyn" / "__init__.py"

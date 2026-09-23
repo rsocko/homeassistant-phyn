@@ -4,13 +4,13 @@
   "after_dependencies": ["recorder"],
   "codeowners": ["@mizterb","@jordanruthe"],
   "config_flow": true,
-  "documentation": "https://github.com/jordanruthe/homeassistant-phyn",
+  "documentation": "https://github.com/rsocko/homeassistant-phyn",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/jordanruthe/homeassistant-phyn/issues",
+  "issue_tracker": "https://github.com/rsocko/homeassistant-phyn/issues",
   "loggers": ["custom_components.phyn","aiophyn"],
-  "homeassistant": "2026.6.4",
+  "homeassistant": "2026.9.3",
   "requirements": [
-    "aiophyn>=2026.9.1"
+    "aiophyn @ https://github.com/rsocko/aiophyn/releases/download/v2026.9.2.dev1/aiophyn-2026.9.2.dev1-py3-none-any.whl#sha256=ba99fd02d40199fb3c97a7ba3d8081786ec4717c47186cb041be8930d9d4c7fb"
   ],
-  "version": "2026.9.1"
+  "version": "2026.9.2-beta.1"
 }

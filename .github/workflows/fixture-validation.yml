@@ -9,12 +9,57 @@ permissions:
   contents: read
 
 jobs:
+  distribution-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate custom integration package
+        uses: home-assistant/actions/hassfest@master
+      - name: Validate HACS package
+        uses: hacs/action@main
+        with:
+          category: integration
+          ignore: topics
+          comment: false
+
+  home-assistant-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install manifest dependency in a disposable official HA container
+        shell: bash
+        run: |
+          mkdir -p validation-results
+          docker pull ghcr.io/home-assistant/home-assistant:2026.9.3
+          docker image inspect ghcr.io/home-assistant/home-assistant:2026.9.3 \
+            --format '{{json .RepoDigests}}' | tee validation-results/image.txt
+          docker run --rm --entrypoint python \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/work,readonly" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 \
+            /work/scripts/verify_development_install.py \
+            2>&1 | tee validation-results/ha-installer.txt
+      - name: Preserve installer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ha-installer-${{ github.sha }}-${{ github.run_attempt }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 7
+
   offline-home-assistant:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      VALIDATION_LANE: attribution-followup
-      AIOPHYN_SHA: 42d35d61e338da4b34b5074490782a80419a31cd
+      VALIDATION_LANE: hacs-development-artifact
+      AIOPHYN_VERSION: 2026.9.2.dev1
+      AIOPHYN_SHA: b187b745eeb9e0dfd9ba7bf86bcf706a50e41280
     defaults:
       run:
         shell: bash
@@ -29,7 +74,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install immutable library candidate with all dependencies
+      - name: Install exact manifest artifact with all dependencies
         run: |
           mkdir -p validation-results
           {
@@ -38,11 +83,12 @@ jobs:
             python --version
             printf 'lane=%s\naiophyn_sha=%s\n' "$VALIDATION_LANE" "$AIOPHYN_SHA"
           } | tee validation-results/source.txt
+          requirement="$(python -c 'import json; print(json.load(open("custom_components/phyn/manifest.json"))["requirements"][0])')"
           python -m pip install --report validation-results/install.json \
             -r requirements_test_public.txt \
             pytest-homeassistant-custom-component==0.13.366 \
             homeassistant==2026.9.3 \
-            "aiophyn @ https://github.com/rsocko/aiophyn/archive/${AIOPHYN_SHA}.zip" \
+            "$requirement" \
             2>&1 | tee validation-results/install.txt
           python -m pip check | tee validation-results/pip-check.txt
 
@@ -57,13 +103,16 @@ jobs:
           import json
           import os
           from pathlib import Path
+          from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+          from packaging.requirements import Requirement
 
           import aiophyn
 
           for name, expected in (
               ("homeassistant", "2026.9.3"),
               ("pytest-homeassistant-custom-component", "0.13.366"),
-              ("aiophyn", "2026.9.1"),
+              ("aiophyn", os.environ["AIOPHYN_VERSION"]),
           ):
               package = distribution(name)
               print(f"{name}=={package.version}")
@@ -73,12 +122,12 @@ jobs:
               assert package.version == expected
               if name == "aiophyn":
                   source = json.loads(direct_url)
-                  expected_url = (
-                      "https://github.com/rsocko/aiophyn/archive/"
-                      f"{os.environ['AIOPHYN_SHA']}.zip"
-                  )
+                  manifest = json.loads(Path("custom_components/phyn/manifest.json").read_text())
+                  requirement = Requirement(manifest["requirements"][0])
+                  url = urlsplit(requirement.url)
+                  expected_url = urlunsplit(url._replace(fragment=""))
                   assert source["url"] == expected_url, source
-                  assert source["archive_info"]["hashes"]["sha256"]
+                  assert source["archive_info"]["hashes"]["sha256"] == parse_qs(url.fragment)["sha256"][0]
                   imported = Path(aiophyn.__file__).resolve()
                   installed = Path(package.locate_file("aiophyn/__init__.py")).resolve()
                   print(f"imported aiophyn: {imported}")

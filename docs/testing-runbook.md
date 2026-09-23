@@ -4,15 +4,17 @@
 
 Use **Linux and Python 3.14** (a Linux container or WSL is also suitable).
 `requirements_test.txt` pins `pytest-homeassistant-custom-component==0.13.366`,
-which selects Home Assistant **2026.9.3**. This is a tested development pairing,
-not proof of support for the declared minimum HA 2026.6.4 or every later version.
+which selects Home Assistant **2026.9.3**. The HACS and manifest minimums now
+conservatively match that baseline. This is not proof that older releases are
+broken or that every later version has been tested.
 Transitive dependencies are not fully locked; keep the resolver/provenance logs.
 
 **Published aiophyn 2026.9.1 currently cannot resolve with this HA pairing.**
 It requires `pycognito>=2022.8.0,<2023.0.0`, whereas HA's
 `hass-nabucasa==2.7.0` requires `pycognito==2024.5.1`. The candidate library
-corrects this to `pycognito>=2024.5.1,<2025`, but still reports version 2026.9.1.
-Version output alone therefore cannot distinguish the candidate from PyPI.
+corrects this to `pycognito>=2024.5.1,<2025`. Earlier candidate commits still
+reported version 2026.9.1, so their version alone cannot distinguish them from
+PyPI. The HACS development artifact is separately versioned **2026.9.2.dev1**.
 Do not bypass resolution with `--no-deps`, downgrade HA, skip tests, or treat
 candidate success as published compatibility. The normal release lane must
 expose the actual failure until a compatible public release is approved.
@@ -27,8 +29,8 @@ The library was the **final remediation candidate**
 `972f16c8fb0ede1a2f3365680a972f70c47b6fe7`, not the published distribution.
 Joint resolution, `pip check` and archive/import provenance passed. This evidence
 covers that exact runtime/library pair, not later workflow changes or a public
-release. No release version or artifact has been selected by this development
-workflow.
+release. Current HACS development packaging is described below; those older
+results do not establish its installation behavior.
 
 ## Local published-dependency lane
 
@@ -204,8 +206,9 @@ until it is registered on the default branch. This development layer does not
 register it or authorize a default-branch change. The former isolated validation
 branch was consolidated and deleted. The authorized route is now
 `fixture-validation.yml` on pushes to `feature/fixture-usage`, using immutable
-aiophyn `42d35d61e338da4b34b5074490782a80419a31cd`. It runs offline archive and
-editable suites, without Phyn credentials or live-device calls. Validation covers
+aiophyn `b187b745eeb9e0dfd9ba7bf86bcf706a50e41280` for editable verification,
+and the exact manifest wheel for artifact verification. It runs offline artifact
+and editable suites, without Phyn credentials or live-device calls. Validation covers
 only the selected commit, not future library changes. Record exact checked-out commits and
 whether it ran equivalent steps: that is not proof that manual dispatch itself
 was exercised. Final library changes and tooling changes require a new paired
@@ -267,22 +270,110 @@ and report the notice for investigation. Do not delete `.storage` files or
 Recorder history to bypass it, and do not assume an older integration can safely
 read the new state.
 
-## Gated HACS development artifact and stable release
+## HACS development artifact and stable release
 
 The editable loop is not a HACS install. **HACS installs the integration; HA
 installs the Python dependency declared by its manifest.** Installing the fork
 does not automatically select the aiophyn fork. The README's upstream HACS
-instructions do not install this fork's fixture additions. Both integrations
+distribution does not install this fork's fixture additions. Both integrations
 use domain `phyn`; do not install upstream and this fork side by side.
 
-A future opt-in development release needs a uniquely versioned library build,
-final paired offline validation, clean out-of-tree artifact installation and an
-approved **public immutable** artifact (prefer a wheel/sdist URL with a verified
-SHA-256 hash; a full-commit archive only after build/install verification).
+The opt-in integration prerelease **v2026.9.2-beta.1** selects the public
+**aiophyn 2026.9.2.dev1** wheel from the fork's **v2026.9.2.dev1** release.
+The exact URL and SHA-256 are recorded in `custom_components/phyn/manifest.json`.
+The library release includes its wheel, source distribution and checksums.
+Tags point to feature-branch commits; neither repository needs a main merge.
+These assets are distinct from upstream's public PyPI 2026.9.1.
+
+Before publishing the integration release, require the library's artifact gates,
+full paired tests, `pip check` and exact artifact/editable provenance, plus
+HACS/hassfest validation. The `home-assistant-installer` job uses an official
+HA 2026.9.3 container and `scripts/verify_development_install.py` to invoke HA's
+real requirements installer against the manifest (including HA constraints).
+It then checks installed version, import path, direct URL and hash, and imports
+the integration. No account is configured, no integration is started, and no
+Phyn device calls are made. It is not a live HACS UI or account-onboarding test.
+
 Do not use moving refs, replaceable unhashed assets, private Actions artifacts,
-editable paths or developer dependency-skip flags for rollout. No artifact,
-version or manifest replacement is selected here. The release owner must
-validate HA dependency installation and HACS/hassfest acceptance before rollout.
+editable paths or developer dependency-skip flags for rollout. Never rebuild
+different bytes under a published development version/tag. For each library
+change, issue a new library development build and an integration prerelease
+pinning it; integration-only changes can retain the already-tested library.
+
+## HACS development installation checklist
+
+This checklist is for the isolated HA Container **2026.9.3** development
+instance. A hostname is not permission for automation to access or change it.
+The operator performs installation and restarts; production remains unchanged.
+
+1. Record the current HA image tag and HACS/integration version. Back up the
+   Docker deployment definition separately.
+2. Create a named backup in **Settings > System > Backups**, including HA
+   configuration and Recorder history/database. With the default SQLite
+   backend, do not exclude the database. Download the completed backup outside
+   the Docker host and retain its encryption emergency kit securely. Backups
+   contain credentials; do not commit or paste their contents.
+3. For an exact filesystem checkpoint, gracefully stop the dev container and
+   archive/snapshot its whole configuration mount, including `.storage`,
+   `custom_components`, configuration files and SQLite files, before restarting.
+   Do not copy only a running SQLite main database while WAL data may exist.
+4. Confirm the dev instance has independent config/database and no automations
+   that operate real devices. The Phyn account/devices remain real even though
+   HA is isolated. Do not invoke valves, leak tests, firmware updates, away or
+   autoshutoff changes, or feedback writes during this read-oriented pilot.
+5. In HACS, add `https://github.com/rsocko/homeassistant-phyn` as an
+   **Integration** custom repository if it is not already present. There must be
+   only one source managing `custom_components/phyn`. Preserve the saved Phyn
+   config entry when replacing an existing installation.
+6. Enable this repository's prerelease consideration if your HACS version
+   requires it. Select **Update information**, then **Download/Redownload >
+   Need a different version? > v2026.9.2-beta.1**. A UI may omit the leading `v`.
+   An installed/latest SHA such as `ff0004b` is the old default branch, not this
+   release. If the selected version is absent, stop rather than installing the
+   default branch or editing the installed manifest.
+7. Restart HA normally. HACS should report `2026.9.2-beta.1`; HA must not report
+   dependency/setup failures. HA installs the exact manifest wheel without a
+   separate `pip install`, editable checkout or `--skip-pip` flag.
+8. Configure Phyn in **Settings > Devices & services** only if it is not already
+   configured. Normal polling can immediately import usage into the **dev**
+   Recorder; a service dry-run does not disable these background imports.
+9. Verify devices/entities and logs. The integration manifest version is
+   `2026.9.2-beta.1`; installed library distribution and `aiophyn.__version__`
+   must both be `2026.9.2.dev1`, with the manifest URL/hash as installation
+   provenance. A read-only inspection from the same container Python environment
+   can use `importlib.metadata.distribution("aiophyn")`,
+   `distribution.read_text("direct_url.json")` and `aiophyn.__file__`.
+10. In **Developer Tools > Actions**, choose `phyn.import_fixture_statistics`
+    with an entity from **one intended device**, explicit start/end datetimes
+    for a completed day, and `dry_run: true`. Review device, dates, fetched
+    events, projected rows/corrections, and zero cleared statistic IDs.
+11. If approved, repeat that fixed range with `dry_run: false` to write dev
+    statistics. Compare selected totals/categories with the Phyn app. Identical
+    returned observations must not double-count on replay; cloud observations
+    can change and a requested window does not prove completeness.
+12. Restart or reload the integration deliberately and verify history remains,
+    with no unexpected duplicate usage or fixture-state pause notice. Keep
+    app-based attribution edits separate and deliberate: they modify the real
+    account. HA review/editing remains future work (#1/#2 in this repository).
+
+### Updating and rollback
+
+For a new candidate, take another named backup, select that exact integration
+prerelease in HACS, restart, and repeat the bounded checks. Do not automatically
+promote branch pushes into a running HA instance. Install the same immutable
+candidate in production only after a successful pilot and separate approval.
+
+Rollback must preserve the matched configuration/Phyn evidence **and** Recorder
+database from the same checkpoint, plus the prior HA image and integration
+source. Do not assume a code-only downgrade can read newer saved state, clear
+history to resolve a pause, or combine an old ledger with newer statistics.
+Restore rehearsals must use an isolated configuration; do not connect two test
+copies to the same Recorder database.
+
+This development release is not security certification or production-readiness
+approval. Inherited dependency advisories were not all remediated.
+
+### Eventual stable release
 
 Stable order: publish the approved compatible aiophyn release first, update the
 integration's manifest to its approved exact PyPI pin and align the test

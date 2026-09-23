@@ -16,19 +16,32 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This custom component can be integrated into [HACS](https://github.com/hacs/integration), so you can track future updates. If you have do not have have HACS installed, please see [their installation guide](https://hacs.xyz/docs/installation/manual).
+This fork's opt-in development release is **2026.9.2-beta.1**, requiring
+**Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
+guarantee for every newer release. It is intended for backed-up development
+instances first, not an automatic production upgrade.
 
-1. Select HACS from the left-hand navigation menu.
+HACS downloads the integration; HA installs its exact, checksum-pinned aiophyn
+development wheel. **Do not install aiophyn manually or select the moving
+`feature/fixture-usage` branch.** See the
+[development installation and rollback checklist](docs/testing-runbook.md#hacs-development-installation-checklist).
 
-2. Click _Integrations_.
+1. Back up the development instance, including its Recorder database.
+2. In HACS, open **Custom repositories**, add
+   `https://github.com/rsocko/homeassistant-phyn`, and select **Integration**.
+3. Enable prerelease consideration for this repository if required by your HACS
+   version, then select **Update information**.
+4. Choose **Download** or **Redownload**, open **Need a different version?**, and
+   select **v2026.9.2-beta.1** (some UIs omit the `v`).
+5. Restart Home Assistant and verify the installed version before configuring
+   Phyn or running the bounded checks in the runbook.
 
-3. Click the three dots in the upper right-hand corner and select _Custom Repositories_.
-
-4. Paste "https://github.com/jordanruthe/homeassistant-phyn" into _Repository_, select "Integration" as _Category_, and click Add.
-
-5. Close the Custom repositories dialog after it updates with the new integration.
-
-6. "Phyn Smart Water Assistant" will appear in your list of repositories. Click to open, click the following Download buttons.
+An installed/latest value of `ff0004b` means HACS is following this fork's old
+default branch, **not** this development release. Do not proceed until the
+selected prerelease is visible. Upstream and this fork both use domain `phyn`;
+replace the existing code source, not the saved integration configuration, and
+do not install both side by side. For the upstream distribution rather than
+this fork, see [jordanruthe/homeassistant-phyn](https://github.com/jordanruthe/homeassistant-phyn).
 
 # Configuration
 
@@ -273,11 +286,9 @@ revision ordering, complete history, or stable IDs across reprocessing.
 This fork combines the fixture-usage features with upstream `main` at `10e4409`
 (2026-09-13). Fixture imports require the epoch-millisecond `from_ts`/`to_ts`
 library API even if a candidate also supports datetime bounds. The HACS
-instructions above install upstream, not this fork's fixture-usage features.
-HACS installs the integration; HA installs its manifest dependency. An immutable
-development artifact and later stable PyPI release must pass separate gates;
-neither is selected here. Do not install two integrations with domain `phyn`
-side by side.
+instructions above select this fork's explicit development prerelease.
+HACS installs the integration; HA installs its manifest dependency. The fork's
+development artifact and a future stable PyPI release have separate gates.
 
 ### Continuous Integration
 
@@ -290,12 +301,14 @@ The existing Phase 2 runner supports published packages or a full immutable
 40-hex commit in `rsocko/aiophyn`, with no moving candidate default. It defaults
 to all tests; the targeted selector includes Recorder and lifecycle cases.
 Manual dispatch requires the workflow on the default branch; until registered,
-the separately authorized isolated cloud-validation branch is the validation
-route, not evidence of a tested dispatch.
+the push-triggered feature validation workflow is the validation route, not
+evidence of a tested dispatch. It checks the manifest artifact, an exact editable
+library revision, the actual HA dependency installer in an official disposable
+container, and HACS/hassfest package validation.
 
 Coverage includes fixture aggregation/corrections, registered services, installed
 library API boundaries, real Recorder readback/recovery, and fixture lifecycle/
 unload behavior, alongside basic integration-file checks. This is not full
 config-flow, migration, reauth/reconfigure or live-device coverage, and does not
-establish HA 2026.6.4 minimum-version support or Bronze quality certification.
+establish support below HA 2026.9.3 or Bronze quality certification.
 The runbook records exact candidate-only evidence and remaining release gates.
