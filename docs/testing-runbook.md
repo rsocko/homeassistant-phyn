@@ -4,8 +4,9 @@
 
 Use **Linux and Python 3.14** (a Linux container or WSL is also suitable).
 `requirements_test.txt` pins `pytest-homeassistant-custom-component==0.13.366`,
-which selects Home Assistant **2026.9.3**. The HACS and manifest minimums now
-conservatively match that baseline. This is not proof that older releases are
+which selects Home Assistant **2026.9.3**. The HACS minimum now conservatively
+matches that baseline; `homeassistant` is not a supported integration manifest
+field and is omitted there. This is not proof that older releases are
 broken or that every later version has been tested.
 Transitive dependencies are not fully locked; keep the resolver/provenance logs.
 
@@ -290,8 +291,11 @@ full paired tests, `pip check` and exact artifact/editable provenance, plus
 HACS/hassfest validation. The `home-assistant-installer` job uses an official
 HA 2026.9.3 container and `scripts/verify_development_install.py` to invoke HA's
 real requirements installer against the manifest (including HA constraints).
-It then checks installed version, import path, direct URL and hash, and imports
-the integration. No account is configured, no integration is started, and no
+It first rejects a deliberately incorrect hash through that installer, then
+checks the correct artifact's installed version, import path and direct URL,
+compares installed files with the independently hash-verified wheel, and imports
+the integration. HA's uv may omit the hash from `direct_url.json`, so metadata
+alone is not treated as checksum evidence. No account is configured, no integration is started, and no
 Phyn device calls are made. It is not a live HACS UI or account-onboarding test.
 
 Do not use moving refs, replaceable unhashed assets, private Actions artifacts,
@@ -339,8 +343,9 @@ The operator performs installation and restarts; production remains unchanged.
    Recorder; a service dry-run does not disable these background imports.
 9. Verify devices/entities and logs. The integration manifest version is
    `2026.9.2-beta.1`; installed library distribution and `aiophyn.__version__`
-   must both be `2026.9.2.dev1`, with the manifest URL/hash as installation
-   provenance. A read-only inspection from the same container Python environment
+   must both be `2026.9.2.dev1`, with the manifest URL as installation provenance.
+   The manifest checksum is exercised by CI's installer and installed-file checks;
+   HA's uv may leave the metadata hash empty. A read-only inspection from the same container Python environment
    can use `importlib.metadata.distribution("aiophyn")`,
    `distribution.read_text("direct_url.json")` and `aiophyn.__file__`.
 10. In **Developer Tools > Actions**, choose `phyn.import_fixture_statistics`
