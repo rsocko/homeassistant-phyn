@@ -1,0 +1,150 @@
+[
+  {
+    "name": "highest-confidence-not-first",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": "0.2"},
+      {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": "0.9"},
+      {"fixture_id": 9, "fixture_name": "Shower", "confidence_score": "0.8"}
+    ]}},
+    "expected": {"attributed_fixture": "Toilet", "attributed_fixture_id": 8, "attribution_source": "prediction", "attributed_confidence": 0.9, "confidence_gap": 0.1}
+  },
+  {
+    "name": "human-overrides-stronger-model",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": "008", "sub_fixture_id": 12, "tell_us": "Private synthetic label"}, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.99},
+      {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.1}
+    ]}},
+    "expected": {"attributed_fixture": "Toilet", "attributed_fixture_id": 8, "attribution_source": "user_feedback", "attributed_confidence": null, "feedback_conflict": true, "needs_review": false}
+  },
+  {
+    "name": "human-without-predictions",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": null},
+    "expected": {"attributed_fixture": "Fixture type 8", "attributed_fixture_id": 8, "attribution_source": "user_feedback", "attributed_confidence": null}
+  },
+  {
+    "name": "orphan-human-id-never-uses-wrong-model-label",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.99}]}},
+    "expected": {"attributed_fixture": "Fixture type 8", "attributed_fixture_id": 8, "attribution_source": "user_feedback", "attributed_confidence": null}
+  },
+  {
+    "name": "zero-human-id-is-not-absent",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 0}},
+    "expected": {"attributed_fixture": "Fixture type 0", "attributed_fixture_id": 0, "attribution_source": "user_feedback", "attributed_confidence": null}
+  },
+  {
+    "name": "comment-only-is-not-category-selection",
+    "event": {"total_flow": 2, "latest_user_feedback": {"tell_us": "Private synthetic label"}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
+  },
+  {
+    "name": "subfixture-only-is-not-category-selection",
+    "event": {"total_flow": 2, "latest_user_feedback": {"sub_fixture_id": 12}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
+  },
+  {
+    "name": "null-human-id-is-not-selection",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": null}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
+  },
+  {
+    "name": "algorithm-name-is-not-explicit-feedback",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8, "prediction_algorithm": "user-feedback"}]}},
+    "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "algorithm": "user-feedback"}
+  },
+  {
+    "name": "tie-preserves-first-maximum-and-flags-review",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8},
+      {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.8}
+    ]}},
+    "expected": {"attributed_fixture": "Sink", "attributed_fixture_id": 7, "tied_confidence": true, "confidence_gap": 0.0, "needs_review": true}
+  },
+  {
+    "name": "reordered-exact-tie-can-change-provisional-label",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.8},
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}
+    ]}},
+    "expected": {"attributed_fixture": "Toilet", "attributed_fixture_id": 8, "tied_confidence": true, "needs_review": true}
+  },
+  {
+    "name": "scored-model-without-name-or-id-cannot-attribute-category",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Unknown", "attributed_fixture_id": null, "attribution_source": "unknown", "attributed_confidence": null, "top_confidence": 0.8, "review_reasons": ["no_attributable_prediction"]}
+  },
+  {
+    "name": "model-winner-can-use-unambiguous-same-id-name",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "confidence_score": 0.9},
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.2}
+    ]}},
+    "expected": {"attributed_fixture": "Sink", "attributed_fixture_id": 7, "attribution_source": "prediction", "attributed_confidence": 0.9, "review_reasons": []}
+  },
+  {
+    "name": "neither-source-is-unknown",
+    "event": {"total_flow": 2, "latest_user_feedback": null, "latest_suggested_fixtures_result": {"suggested_fixtures": []}},
+    "expected": {"attributed_fixture": "Unknown", "attributed_fixture_id": null, "attribution_source": "unknown", "attributed_confidence": null, "needs_review": true}
+  },
+  {
+    "name": "blank-explicit-id-fails",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": ""}},
+    "expected_error": "fixture_id"
+  },
+  {
+    "name": "boolean-explicit-id-fails",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": false}},
+    "expected_error": "fixture_id"
+  },
+  {
+    "name": "malformed-feedback-container-fails",
+    "event": {"total_flow": 2, "latest_user_feedback": []},
+    "expected_error": "latest_user_feedback"
+  },
+  {
+    "name": "missing-model-confidence-without-human-fails",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink"}]}},
+    "expected_error": "confidence_score"
+  },
+  {
+    "name": "human-survives-missing-model-confidence",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink"}]}},
+    "expected": {"attributed_fixture": "Fixture type 8", "attribution_source": "user_feedback", "attributed_confidence": null, "invalid_prediction_metadata": true, "review_reasons": ["invalid_prediction_metadata"]}
+  },
+  {
+    "name": "human-survives-malformed-model-container",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": []},
+    "expected": {"attributed_fixture": "Fixture type 8", "attribution_source": "user_feedback", "invalid_prediction_metadata": true}
+  },
+  {
+    "name": "human-survives-invalid-unrelated-model-id",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": false, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Fixture type 8", "attribution_source": "user_feedback", "invalid_prediction_metadata": true}
+  },
+  {
+    "name": "repeated-id-with-conflicting-names-keeps-id",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 7}, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8},
+      {"fixture_id": 7, "fixture_name": "Toilet", "confidence_score": 0.7}
+    ]}},
+    "expected": {"attributed_fixture": "Fixture type 7", "attribution_source": "user_feedback", "conflicting_fixture_names": true, "review_reasons": ["conflicting_fixture_names"]}
+  },
+  {
+    "name": "model-same-id-conflicting-names-keeps-id",
+    "event": {"total_flow": 2, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+      {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.9},
+      {"fixture_id": 7, "fixture_name": "Toilet", "confidence_score": 0.2}
+    ]}},
+    "expected": {"attributed_fixture": "Fixture type 7", "attribution_source": "prediction", "attributed_confidence": 0.9, "conflicting_fixture_names": true, "review_reasons": ["conflicting_fixture_names"]}
+  },
+  {
+    "name": "existing-catalog-label-wins-with-conflict-warning",
+    "catalog": {"8": "Toilet"},
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 8, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "expected": {"attributed_fixture": "Toilet", "attribution_source": "user_feedback", "conflicting_fixture_names": true}
+  },
+  {
+    "name": "unproven-feedback-label-fields-are-not-category-identity",
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": 8, "fixture_name": [], "tell_us": "Private synthetic label"}, "user_fixture_label": "Private legacy label"},
+    "expected": {"attributed_fixture": "Fixture type 8", "attribution_source": "user_feedback", "attributed_confidence": null}
+  }
+]

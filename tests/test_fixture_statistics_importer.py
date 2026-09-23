@@ -11,6 +11,7 @@ from custom_components.phyn.fixture_statistics import (
     FixtureStatisticsState,
     HOUR_MS,
     PhynFixtureStatisticsImporter,
+    _encode_rows,
     _plan,
 )
 
@@ -18,7 +19,10 @@ from custom_components.phyn.fixture_statistics import (
 def event(key, hour, volume=1.0, label="Kitchen"):
     return {
         "id": key, "close_edge_timestamp": hour * HOUR_MS + 1000,
-        "total_flow": volume, "user_fixture_label": label,
+        "total_flow": volume,
+        "latest_suggested_fixtures_result": {
+            "suggested_fixtures": [{"fixture_name": label, "confidence_score": 1}]
+        },
     }
 
 
@@ -87,6 +91,31 @@ def test_contradictory_same_response_is_rejected_without_mutation():
     with pytest.raises(ValueError, match="Conflicting observations"):
         _plan(state, [event("one", 1, 1), event("one", 1, 2)], "device", False)
     assert not state.events
+
+
+def test_pending_saved_labels_decode_without_raw_policy(monkeypatch):
+    state = accept(FixtureStatisticsState(), [event("one", 1, 3, "Legacy private label")])
+    pending, _ = _plan(state, [event("one", 1, 3, "Other old label")], "device", False)
+    saved = {
+        "schema": 2, "events": state.events, "fixture_ids": state.fixture_ids,
+        "rows": _encode_rows(state.rows),
+        "pending": {
+            "updates": pending.updates, "fixture_ids": pending.fixture_ids,
+            "rows": _encode_rows(pending.rows),
+        },
+    }
+
+    def reject_raw(_event):
+        raise AssertionError("Saved pending labels are not raw observations")
+
+    monkeypatch.setattr(
+        "custom_components.phyn.fixture_statistics.resolve_fixture_name", reject_raw
+    )
+    importer = object.__new__(PhynFixtureStatisticsImporter)
+    importer._device_id = "device"
+    restored, restored_pending = importer._decode(saved)
+    assert restored == state
+    assert restored_pending == pending
 
 
 @pytest.mark.asyncio

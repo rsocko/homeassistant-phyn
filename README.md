@@ -233,6 +233,43 @@ developer state pauses fixture statistics only, with a persistent notice; normal
 sensors and controls continue. See the runbook for readback/recovery limits;
 there is no automatic migration or history clear.
 
+### Fixture attribution and review
+
+Review and correct event attribution in the **Phyn app** for now. Home Assistant
+offers aggregate statistics and import/reload previews, not an event attribution
+editor. Future work is tracked separately:
+[read-only review (#1)](https://github.com/rsocko/homeassistant-phyn/issues/1) and
+[user-confirmed editing (#2)](https://github.com/rsocko/homeassistant-phyn/issues/2).
+
+For fetched observations, an explicit, valid `latest_user_feedback.fixture_id`
+takes precedence over model predictions. This is a **category ID**, not a unique
+household fixture. Its label comes from matching suggestions already in the
+response, or `Fixture type N` if no unambiguous matching name is available.
+No additional catalog request is made. `sub_fixture_id` remains separate private
+metadata in the observation; it is not used as a statistics bucket. Freeform
+`tell_us`, unsupported label fields, and an algorithm called `user-feedback`
+are not substitutes for an explicit category selection.
+
+Without that selection, all model candidates are validated and the greatest
+finite confidence in `[0, 1]` wins (numeric strings are accepted). Exact ties use
+the first **maximum**, with a review warning; reordering tied candidates can
+therefore change provisional attribution. Missing predictions produce `Unknown`.
+Malformed feedback or model candidates reject the batch rather than silently
+skipping potentially dominant candidates. A valid human choice survives invalid
+optional model metadata with a warning and an ID-based label; model confidence
+is never assigned to the human choice. Review warnings contain reason codes,
+not private feedback text.
+
+Upgrading does **not** reinterpret saved event labels on startup. Subsequent
+normal polling or requested imports can reattribute a refetched event under this
+policy, including events previously labeled from freeform text or the first
+prediction. Existing reconciliation adjusts both former and new category series
+and their downstream sums; omitted events and unrelated history are retained.
+No automatic all-history reimport is performed. The compact ledger retains
+accepted contributions, not raw feedback, predictions, or household metadata.
+This remains a last-observed **local policy**, not proof of server freshness,
+revision ordering, complete history, or stable IDs across reprocessing.
+
 This fork combines the fixture-usage features with upstream `main` at `10e4409`
 (2026-09-13). Fixture imports require the epoch-millisecond `from_ts`/`to_ts`
 library API even if a candidate also supports datetime bounds. The HACS

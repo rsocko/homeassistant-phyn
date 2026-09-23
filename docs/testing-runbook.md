@@ -201,14 +201,37 @@ There are no capability skips or success-shaped candidate fallbacks.
 
 **Dispatch limitation:** GitHub cannot run this `workflow_dispatch` workflow
 until it is registered on the default branch. This development layer does not
-register it or authorize a default-branch change. The current authorized route
-is the cloud owner's isolated `rsocko-phyn-cloud-validation` branch and its
-push-triggered `fixture-validation.yml`. Record exact checked-out commits and
+register it or authorize a default-branch change. The former isolated validation
+branch was consolidated and deleted. The authorized route is now
+`fixture-validation.yml` on pushes to `feature/fixture-usage`, using immutable
+aiophyn `972f16c8fb0ede1a2f3365680a972f70c47b6fe7`. It runs offline archive and
+editable suites, without Phyn credentials or live-device calls. This is not
+validation of newer, unpushed library diagnostics. Record exact checked-out commits and
 whether it ran equivalent steps: that is not proof that manual dispatch itself
 was exercised. Final library changes and tooling changes require a new paired
 run, not reuse of an earlier green result.
 
 ## Fixture history, corrections and recovery
+
+Attribution follows the [consumer policy and app review guidance](../README.md#fixture-attribution-and-review).
+The synthetic vectors in `tests/fixtures/attribution_cases.json` reproduce the
+25 JSON cases from aiophyn commit
+`42d35d61e338da4b34b5074490782a80419a31cd` (diagnostic implementation:
+`f032a3a457cf5dfa4347bf991a244e80eff09273`). The original shared file SHA-256 is
+`addd47554225e943f27a8bebe07b2b0b42fb27933ea44f9794df3c8938300f8c`;
+the local copy uses different whitespace but identical JSON values.
+Twenty-four raw-event cases apply directly. The catalog-only case is retained
+as source evidence and exercised separately **without** its optional catalog:
+the consumer does not fetch one. These are policy-conformance cases, not proof
+of server revision semantics or observed live user corrections.
+
+The helper tests cover precedence, all-candidate validation, ties and private-safe
+review warnings. Recorder tests additionally cover unchanged saved labels on
+restore, same-ID refetch moving contributions between categories without
+changing total consumption or unrelated older rows, and preview without writes.
+Pure-source probes cannot substitute for running these Recorder tests with the
+real Home Assistant harness. Saved accepted labels are not fed back through the
+raw-event resolver, including when recovering a pending journal.
 
 The runtime retains compact **accepted contributions for all imported history**,
 with no automatic expiry. Storage growth is intentional. Updates are serialized

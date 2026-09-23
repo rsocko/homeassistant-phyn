@@ -3,7 +3,7 @@ name: Isolated fixture runtime validation
 on:
   push:
     branches:
-      - rsocko-phyn-cloud-validation
+      - feature/fixture-usage
 
 permissions:
   contents: read

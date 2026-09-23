@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from hashlib import sha256
+import logging
 import math
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
 from homeassistant.components.persistent_notification import async_create, async_dismiss
 from homeassistant.components.recorder import get_instance
@@ -33,6 +34,7 @@ FIXTURE_STATE_SCHEMA = 2
 DEFAULT_INITIAL_LOOKBACK_DAYS = 7
 HOUR_MS = 3_600_000
 VERIFY_TIMEOUT_SECONDS = 20
+_LOGGER = logging.getLogger(__name__)
 
 
 class EventContribution(TypedDict):
@@ -70,27 +72,149 @@ def extract_event_id(event: dict[str, Any]) -> str | None:
     return value.strip() or None if isinstance(value, str) else None
 
 
-def resolve_fixture_name(event: dict[str, Any]) -> str:
-    """Resolve a label, not a unique household fixture identity."""
-    feedback = event.get("latest_user_feedback") or {}
-    if not isinstance(feedback, dict):
-        raise ValueError("Invalid fixture feedback")
-    label = feedback.get("tell_us") or event.get("user_fixture_label")
-    if isinstance(label, str) and label.strip():
-        return label.strip()
-    prediction = event.get("latest_suggested_fixtures_result") or {}
+@dataclass(frozen=True)
+class FixturePrediction:
+    """Validated category suggestion, not a household fixture."""
+
+    fixture_id: int | None
+    name: str | None
+    confidence: float
+
+
+@dataclass(frozen=True)
+class FixtureAttribution:
+    """Local attribution diagnostics, never an authoritative server revision."""
+
+    label: str
+    fixture_id: int | None
+    source: Literal["user_feedback", "prediction", "unknown"]
+    confidence: float | None
+    top_prediction: FixturePrediction | None
+    confidence_gap: float | None
+    tied_confidence: bool
+    feedback_conflict: bool
+    review_reasons: tuple[str, ...]
+    sub_fixture_id: Any = field(default=None, repr=False)
+
+
+def _category_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    if isinstance(value, str):
+        digits = value.strip()
+        if digits and digits.isascii() and digits.isdigit():
+            try:
+                return int(digits)
+            except ValueError:
+                pass
+    raise ValueError("Invalid fixture_id: expected a nonnegative integer or ASCII digit string")
+
+
+def _fixture_predictions(event: dict[str, Any]) -> list[FixturePrediction]:
+    prediction = event.get("latest_suggested_fixtures_result")
+    if prediction is None:
+        return []
     if not isinstance(prediction, dict):
-        raise ValueError("Invalid fixture prediction")
-    suggestions = prediction.get("suggested_fixtures") or []
+        raise ValueError("Invalid latest_suggested_fixtures_result")
+    suggestions = prediction.get("suggested_fixtures")
+    if suggestions is None:
+        return []
     if not isinstance(suggestions, list):
-        raise ValueError("Invalid fixture suggestions")
-    if suggestions:
-        if not isinstance(suggestions[0], dict):
-            raise ValueError("Invalid fixture suggestion")
-        name = suggestions[0].get("fixture_name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-    return "Unknown"
+        raise ValueError("Invalid suggested_fixtures")
+    result = []
+    for suggestion in suggestions:
+        if not isinstance(suggestion, dict):
+            raise ValueError("Invalid suggested_fixtures entry")
+        category = _category_id(suggestion.get("fixture_id"))
+        name = suggestion.get("fixture_name")
+        if name is not None and not isinstance(name, str):
+            raise ValueError("Invalid fixture_name")
+        score = suggestion.get("confidence_score")
+        if isinstance(score, bool) or not isinstance(score, (int, float, str)):
+            raise ValueError("Invalid confidence_score")
+        try:
+            confidence = float(score)
+        except (ValueError, OverflowError) as err:
+            raise ValueError("Invalid confidence_score") from err
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("Invalid confidence_score: expected a finite value in [0, 1]")
+        result.append(FixturePrediction(
+            category, name.strip() or None if name else None, confidence
+        ))
+    return result
+
+
+def resolve_fixture_attribution(event: dict[str, Any]) -> FixtureAttribution:
+    """Prefer explicit user category selection, otherwise the first maximum score."""
+    feedback = event.get("latest_user_feedback")
+    if feedback is None:
+        feedback = {}
+    if not isinstance(feedback, dict):
+        raise ValueError("Invalid latest_user_feedback")
+    selected_id = _category_id(feedback.get("fixture_id"))
+    reasons = []
+    if feedback and selected_id is None:
+        reasons.append("feedback_without_fixture_selection")
+    try:
+        predictions = _fixture_predictions(event)
+    except ValueError:
+        if selected_id is None:
+            raise
+        predictions = []
+        reasons.append("invalid_prediction_metadata")
+
+    ranked = sorted(predictions, key=lambda candidate: candidate.confidence, reverse=True)
+    top = ranked[0] if ranked else None
+    gap = ranked[0].confidence - ranked[1].confidence if len(ranked) > 1 else None
+    tied = gap == 0
+    conflict = selected_id is not None and top is not None and (
+        top.fixture_id is not None and top.fixture_id != selected_id
+    )
+    category = selected_id if selected_id is not None else top.fixture_id if top else None
+    source: Literal["user_feedback", "prediction", "unknown"] = (
+        "user_feedback" if selected_id is not None else "prediction" if top else "unknown"
+    )
+    if category is not None:
+        names = {
+            candidate.name for candidate in predictions
+            if candidate.fixture_id == category and candidate.name
+        }
+        if len(names) > 1:
+            reasons.append("conflicting_fixture_names")
+        label = next(iter(names)) if len(names) == 1 else f"Fixture type {category}"
+    else:
+        label = top.name if top and top.name else "Unknown"
+    if selected_id is None:
+        if tied:
+            reasons.append("tied_confidence")
+        if category is None and (top is None or not top.name):
+            source = "unknown"
+            reasons.append("no_attributable_prediction")
+    return FixtureAttribution(
+        label=label,
+        fixture_id=category,
+        source=source,
+        confidence=top.confidence if source == "prediction" and top else None,
+        top_prediction=top,
+        confidence_gap=gap,
+        tied_confidence=tied,
+        feedback_conflict=conflict,
+        review_reasons=tuple(reasons),
+        sub_fixture_id=feedback.get("sub_fixture_id"),
+    )
+
+
+def resolve_fixture_name(event: dict[str, Any]) -> str:
+    """Resolve a category label and report uncertainty without private payloads."""
+    attribution = resolve_fixture_attribution(event)
+    if attribution.review_reasons:
+        _LOGGER.warning(
+            "Phyn fixture attribution needs review in the Phyn app: %s",
+            ", ".join(attribution.review_reasons),
+        )
+    return attribution.label
 
 
 def event_end_timestamp_ms(event: dict[str, Any]) -> int | None:
@@ -103,6 +227,19 @@ def event_end_timestamp_ms(event: dict[str, Any]) -> int | None:
     return int(value)
 
 
+def _contribution_values(end: Any, volume: Any) -> tuple[int, float]:
+    end_ms = event_end_timestamp_ms({"close_edge_timestamp": end})
+    if end_ms is None:
+        raise ValueError("Water usage event requires a valid close timestamp")
+    if (
+        isinstance(volume, bool) or not isinstance(volume, (int, float))
+        or not math.isfinite(volume) or volume < 0
+    ):
+        raise ValueError("Water usage event requires a finite nonnegative volume")
+    datetime.fromtimestamp(end_ms / 1000, timezone.utc)
+    return end_ms, float(volume)
+
+
 def _normalize_events(events: list[dict[str, Any]]) -> dict[str, EventContribution]:
     if not isinstance(events, list):
         raise ValueError("Expected a list of water usage events")
@@ -111,20 +248,15 @@ def _normalize_events(events: list[dict[str, Any]]) -> dict[str, EventContributi
         if not isinstance(event, dict):
             raise ValueError("Invalid water usage event")
         identifier = extract_event_id(event)
-        end_ms = event_end_timestamp_ms(event)
-        volume = event.get("total_flow")
-        if identifier is None or end_ms is None:
-            raise ValueError("Water usage event requires an ID and a valid close timestamp")
+        if identifier is None:
+            raise ValueError("Water usage event requires an ID")
         if event.get("id") and event.get("event_id") and event["id"] != event["event_id"]:
             raise ValueError("Conflicting water usage event identifiers")
-        if (
-            isinstance(volume, bool) or not isinstance(volume, (int, float))
-            or not math.isfinite(volume) or volume < 0
-        ):
-            raise ValueError("Water usage event requires a finite nonnegative volume")
-        datetime.fromtimestamp(end_ms / 1000, timezone.utc)
+        end_ms, volume = _contribution_values(
+            event.get("close_edge_timestamp"), event.get("total_flow")
+        )
         contribution = EventContribution(
-            end_ms=end_ms, volume=float(volume), fixture=resolve_fixture_name(event)
+            end_ms=end_ms, volume=volume, fixture=resolve_fixture_name(event)
         )
         if identifier in normalized and normalized[identifier] != contribution:
             raise ValueError(f"Conflicting observations for event {identifier}")
@@ -248,17 +380,20 @@ def _decode_rows(raw: Any) -> Rows:
 def _decode_events(raw: Any) -> dict[str, EventContribution]:
     if not isinstance(raw, dict):
         raise ValueError("Invalid stored event evidence")
-    observations = []
+    observations: dict[str, EventContribution] = {}
     for key, value in raw.items():
-        if not isinstance(key, str) or not isinstance(value, dict):
+        if (
+            not isinstance(key, str) or not key or key != key.strip()
+            or not isinstance(value, dict)
+        ):
             raise ValueError("Invalid stored event")
         if not isinstance(value.get("fixture"), str) or not value["fixture"].strip():
             raise ValueError("Invalid stored event label")
-        observations.append({
-            "id": key, "close_edge_timestamp": value.get("end_ms"),
-            "total_flow": value.get("volume"), "user_fixture_label": value["fixture"],
-        })
-    return _normalize_events(observations)
+        end_ms, volume = _contribution_values(value.get("end_ms"), value.get("volume"))
+        observations[key] = EventContribution(
+            end_ms=end_ms, volume=volume, fixture=value["fixture"]
+        )
+    return observations
 
 
 def _decode_mapping(raw: Any, device_id: str) -> dict[str, str]:

@@ -124,7 +124,9 @@ async def test_importer_state_survives_restore_and_same_hour_update(hass, record
         "id": "event_1",
         "close_edge_timestamp": timestamp + 1000,
         "total_flow": 1.0,
-        "user_fixture_label": "Kitchen",
+        "latest_suggested_fixtures_result": {
+            "suggested_fixtures": [{"fixture_name": "Kitchen", "confidence_score": 1}]
+        },
     }])
     await async_recorder_block_till_done(hass)
     restored = PhynFixtureStatisticsImporter(hass, "test_device")
@@ -134,7 +136,9 @@ async def test_importer_state_survives_restore_and_same_hour_update(hass, record
         "id": "event_2",
         "close_edge_timestamp": timestamp + 2000,
         "total_flow": 2.0,
-        "user_fixture_label": "Kitchen",
+        "latest_suggested_fixtures_result": {
+            "suggested_fixtures": [{"fixture_name": "Kitchen", "confidence_score": 1}]
+        },
     }])
     rows = await _read_rows(
         hass, recorder_mock, start, fixture_statistic_id("test_device", "Kitchen")
@@ -150,7 +154,9 @@ def _event(key, time, volume, label="Kitchen"):
         "id": key,
         "close_edge_timestamp": int(time.timestamp() * 1000) + 1000,
         "total_flow": volume,
-        "user_fixture_label": label,
+        "latest_suggested_fixtures_result": {
+            "suggested_fixtures": [{"fixture_name": label, "confidence_score": 1}]
+        },
     }
 
 
@@ -217,6 +223,118 @@ async def test_preview_and_empty_force_do_not_change_history(hass, recorder_mock
     assert await importer._store.async_load() == before
     await importer.async_force_reimport_events([])
     assert await importer._store.async_load() == before
+    assert await _read_rows(
+        hass, recorder_mock, start, fixture_statistic_id("device", "Bath")
+    ) == []
+
+
+@pytest.mark.asyncio
+async def test_attribution_refetch_preserves_total_history_and_preview(hass, recorder_mock):
+    """A user category overrides the model only when its observation is accepted."""
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    old = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    recent = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    observed = _event("correct", recent, 5)
+    observed["latest_suggested_fixtures_result"] = {"suggested_fixtures": [
+        {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.1},
+        {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.99},
+    ]}
+    await importer.async_import_events([
+        _event("older", old, 10), observed,
+        _event("later", recent + timedelta(hours=1), 2, "Toilet"),
+    ])
+    kitchen_id = fixture_statistic_id("device", "Kitchen")
+    toilet_id = fixture_statistic_id("device", "Toilet")
+    sink_id = fixture_statistic_id("device", "Sink")
+    old_rows = await _read_rows(hass, recorder_mock, old - timedelta(hours=1), kitchen_id)
+    toilet_before = await _read_rows(
+        hass, recorder_mock, recent - timedelta(hours=1), toilet_id
+    )
+    assert [row["sum"] for row in toilet_before] == [0, 5, 7]
+    before = deepcopy(await importer._store.async_load())
+    corrected = deepcopy(observed)
+    corrected["latest_user_feedback"] = {
+        "fixture_id": "007", "sub_fixture_id": 12, "tell_us": "Private text, not a category",
+    }
+    preview = await importer.async_preview_import_events([corrected])
+    assert preview["corrections_detected"] == 1
+    assert await importer._store.async_load() == before
+    assert await _read_rows(
+        hass, recorder_mock, recent - timedelta(hours=1), toilet_id
+    ) == toilet_before
+    assert await _read_rows(hass, recorder_mock, recent - timedelta(hours=1), sink_id) == []
+
+    result = await importer.async_import_events([corrected])
+    assert result["corrections_detected"] == 1
+    toilet = await _read_rows(hass, recorder_mock, recent - timedelta(hours=1), toilet_id)
+    sink = await _read_rows(hass, recorder_mock, recent - timedelta(hours=1), sink_id)
+    assert [(row["state"], row["sum"]) for row in toilet] == [(0, 0), (0, 0), (2, 2)]
+    assert [(row["state"], row["sum"]) for row in sink] == [(0, 0), (5, 5)]
+    assert await _read_rows(
+        hass, recorder_mock, old - timedelta(hours=1), kitchen_id
+    ) == old_rows
+    assert old_rows[-1]["sum"] + toilet[-1]["sum"] + sink[-1]["sum"] == 17
+    assert set(importer._state.fixture_ids) == {"Kitchen", "Toilet", "Sink"}
+    assert len(importer._state.events) == 3
+    after = deepcopy(await importer._store.async_load())
+    assert (await importer.async_import_events([corrected]))["imported_rows"] == 0
+    assert await importer._store.async_load() == after
+
+
+@pytest.mark.asyncio
+async def test_restore_never_reattributes_saved_labels(hass, recorder_mock, monkeypatch):
+    """An accepted old label survives startup without raw feedback or predictions."""
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    label = "Private legacy fixture label"
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    await importer.async_import_events([_event("old", start, 3, label)])
+    before = deepcopy(await importer._store.async_load())
+    statistic_id = fixture_statistic_id("device", label)
+    rows_before = await _read_rows(
+        hass, recorder_mock, start - timedelta(hours=1), statistic_id
+    )
+
+    def reject_raw_resolution(_event):
+        raise AssertionError("Startup must preserve already accepted labels")
+
+    def reject_writes(*_args, **_kwargs):
+        raise AssertionError("Restore must not write Store or Recorder")
+
+    monkeypatch.setattr(fixture_module, "resolve_fixture_name", reject_raw_resolution)
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", reject_writes)
+    restored = PhynFixtureStatisticsImporter(hass, "device")
+    monkeypatch.setattr(restored._store, "async_save", reject_writes)
+    await restored.async_initialize()
+    assert restored._blocked_reason is None
+    assert restored._state.events["old"]["fixture"] == label
+    assert (await restored.async_import_events([]))["imported_rows"] == 0
+    assert await restored._store.async_load() == before
+    assert await _read_rows(
+        hass, recorder_mock, start - timedelta(hours=1), statistic_id
+    ) == rows_before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [
+    {"latest_user_feedback": {"fixture_id": False}},
+    {"latest_suggested_fixtures_result": {"suggested_fixtures": [
+        {"fixture_name": "Bath", "confidence_score": 1},
+        {"fixture_name": "Sink", "confidence_score": "invalid"},
+    ]}},
+])
+async def test_invalid_attribution_rejects_entire_batch(hass, recorder_mock, invalid):
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    await importer.async_import_events([_event("one", start, 3)])
+    before = deepcopy(await importer._store.async_load())
+    bad = _event("bad", start, 2, "Bath") | invalid
+    with pytest.raises(HomeAssistantError, match="Invalid fixture observations"):
+        await importer.async_import_events([_event("one", start, 10), bad])
+    assert await importer._store.async_load() == before
+    rows = await _read_rows(
+        hass, recorder_mock, start, fixture_statistic_id("device", "Kitchen")
+    )
+    assert [row["sum"] for row in rows] == [3]
     assert await _read_rows(
         hass, recorder_mock, start, fixture_statistic_id("device", "Bath")
     ) == []
