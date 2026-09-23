@@ -9,7 +9,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.target import async_extract_referenced_entity_ids, TargetSelection
 
 from .const import CLIENT, DOMAIN, LOGGER
-from .logbook import async_add_logbook_entry
+from .logbook_helpers import async_add_logbook_entry
 
 
 def _resolve_device_id_from_entity(hass: HomeAssistant, entity_id: str) -> str:

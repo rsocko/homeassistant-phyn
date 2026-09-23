@@ -16,7 +16,7 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This fork's opt-in development release is **2026.9.2-beta.1**, requiring
+This fork's opt-in development release is **2026.9.2-beta.2**, requiring
 **Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
 guarantee for every newer release. It is intended for backed-up development
 instances first, not an automatic production upgrade.
@@ -30,9 +30,12 @@ development wheel. **Do not install aiophyn manually or select the moving
 2. In HACS, open **Custom repositories**, add
    `https://github.com/rsocko/homeassistant-phyn`, and select **Integration**.
 3. Enable prerelease consideration for this repository if required by your HACS
-   version, then select **Update information**.
+   version. In current HACS, find Phyn's **Pre-release** switch in **Settings >
+   Devices & services > Entities**, filtered to HACS; include disabled entities.
+   Enable the entity if disabled, then turn the switch on. Return to HACS and
+   select **Update information**.
 4. Choose **Download** or **Redownload**, open **Need a different version?**, and
-   select **v2026.9.2-beta.1** (some UIs omit the `v`).
+   select **v2026.9.2-beta.2** (some UIs omit the `v`).
 5. Restart Home Assistant and verify the installed version before configuring
    Phyn or running the bounded checks in the runbook.
 

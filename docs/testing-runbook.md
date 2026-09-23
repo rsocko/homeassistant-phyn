@@ -279,7 +279,7 @@ does not automatically select the aiophyn fork. The README's upstream HACS
 distribution does not install this fork's fixture additions. Both integrations
 use domain `phyn`; do not install upstream and this fork side by side.
 
-The opt-in integration prerelease **v2026.9.2-beta.1** selects the public
+The opt-in integration prerelease **v2026.9.2-beta.2** selects the public
 **aiophyn 2026.9.2.dev1** wheel from the fork's **v2026.9.2.dev1** release.
 The exact URL and SHA-256 are recorded in `custom_components/phyn/manifest.json`.
 The library release includes its wheel, source distribution and checksums.
@@ -330,19 +330,23 @@ The operator performs installation and restarts; production remains unchanged.
    only one source managing `custom_components/phyn`. Preserve the saved Phyn
    config entry when replacing an existing installation.
 6. Enable this repository's prerelease consideration if your HACS version
-   requires it. Select **Update information**, then **Download/Redownload >
-   Need a different version? > v2026.9.2-beta.1**. A UI may omit the leading `v`.
+   requires it. In current HACS, find Phyn's **Pre-release** switch under
+   **Settings > Devices & services > Entities**, filtered to HACS, including
+   disabled entities. Enable the entity if needed, then turn its switch on
+   ("Pre-releases preferred"). Return to HACS, select **Update information**,
+   then **Download/Redownload > Need a different version? > v2026.9.2-beta.2**.
+   A UI may omit the leading `v`.
    An installed/latest SHA such as `ff0004b` is the old default branch, not this
    release. If the selected version is absent, stop rather than installing the
    default branch or editing the installed manifest.
-7. Restart HA normally. HACS should report `2026.9.2-beta.1`; HA must not report
+7. Restart HA normally. HACS should report `2026.9.2-beta.2`; HA must not report
    dependency/setup failures. HA installs the exact manifest wheel without a
    separate `pip install`, editable checkout or `--skip-pip` flag.
 8. Configure Phyn in **Settings > Devices & services** only if it is not already
    configured. Normal polling can immediately import usage into the **dev**
    Recorder; a service dry-run does not disable these background imports.
 9. Verify devices/entities and logs. The integration manifest version is
-   `2026.9.2-beta.1`; installed library distribution and `aiophyn.__version__`
+   `2026.9.2-beta.2`; installed library distribution and `aiophyn.__version__`
    must both be `2026.9.2.dev1`, with the manifest URL as installation provenance.
    The manifest checksum is exercised by CI's installer and installed-file checks;
    HA's uv may leave the metadata hash empty. A read-only inspection from the same container Python environment
@@ -360,6 +364,22 @@ The operator performs installation and restarts; production remains unchanged.
     with no unexpected duplicate usage or fixture-state pause notice. Keep
     app-based attribution edits separate and deliberate: they modify the real
     account. HA review/editing remains future work (#1/#2 in this repository).
+
+### Missing entity values during the pilot
+
+The custom-integration "has not been tested by Home Assistant" warning is
+expected; it does not diagnose an entity failure. Check the Phyn config entry's
+setup status and a regular sensor's exact state in **Developer Tools > States**
+(`unknown`, `unavailable`, or no entity) before attempting manual imports.
+An alert event entity can have no value until a new alert occurs.
+
+The first prerelease (`2026.9.2-beta.1`) has a confirmed startup Logbook error:
+`custom_components.phyn.logbook` has no `async_describe_events`. Its helper
+filename collides with HA's platform discovery. Version `2026.9.2-beta.2` renames the
+helper to `logbook_helpers.py`; ordinary Logbook entries still use HA's built-in
+event. This traceback alone does not establish why sensors lack values.
+Install the new prerelease through HACS; do not edit the installed files,
+replace the existing immutable release, or clear configuration/history.
 
 ### Updating and rollback
 

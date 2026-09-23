@@ -1,14 +1,10 @@
 """Logbook helper utilities for the Phyn integration."""
 from __future__ import annotations
 
+from homeassistant.const import EVENT_LOGBOOK_ENTRY
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-
-try:
-    from homeassistant.components.logbook.const import EVENT_LOGBOOK_ENTRY
-except ImportError:
-    from homeassistant.components.logbook import EVENT_LOGBOOK_ENTRY  # type: ignore
 
 
 async def async_add_logbook_entry(

@@ -32,6 +32,13 @@ def test_init_file_exists():
     assert init_path.exists(), "__init__.py not found"
 
 
+def test_logbook_helper_is_not_an_integration_platform():
+    """HA discovers logbook.py as a platform requiring async_describe_events."""
+    component = Path(__file__).parent.parent / "custom_components" / "phyn"
+    assert not (component / "logbook.py").exists()
+    assert (component / "logbook_helpers.py").is_file()
+
+
 def test_strings_file_exists():
     """Test that strings.json exists and is valid."""
     strings_path = Path(__file__).parent.parent / "custom_components" / "phyn" / "strings.json"

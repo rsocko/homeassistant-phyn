@@ -12,7 +12,7 @@ import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
 from ..fixture_statistics import PhynFixtureStatisticsImporter
-from ..logbook import async_add_logbook_entry
+from ..logbook_helpers import async_add_logbook_entry
 from ..entities.base import (
     PhynAlertEvent,
     PhynAlertSensor,
