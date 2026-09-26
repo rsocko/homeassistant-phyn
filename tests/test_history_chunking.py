@@ -349,3 +349,26 @@ async def test_progress_save_error_after_final_commit_does_not_report_empty_retr
     assert set(device._fixture_stats_importer._state.events) == {"first"}
     assert device._fixture_stats_importer._pending is None
     await device.async_shutdown()
+
+
+async def test_unload_stops_later_chunks_of_a_manual_action(hass, recorder_mock):
+    fetch = AsyncMock(return_value=[event("first", DAY_MS, 2)])
+    device = make_device(hass, fetch)
+    shutdown = None
+
+    async def report(progress):
+        nonlocal shutdown
+        if progress["chunks_completed"] == 1 and shutdown is None:
+            shutdown = asyncio.create_task(device.async_shutdown())
+            await asyncio.sleep(0)
+
+    with pytest.raises(HomeAssistantError, match="stopped after 1/3 chunks"):
+        await device.async_import_fixture_statistics(
+            from_datetime=START, to_datetime=START + timedelta(days=21),
+            progress_callback=report,
+        )
+    assert shutdown is not None
+    await shutdown
+    assert fetch.await_count == 1
+    assert set(device._fixture_stats_importer._state.events) == {"first"}
+    assert not device.fixture_import_running

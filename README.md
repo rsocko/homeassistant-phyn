@@ -309,11 +309,13 @@ There is no automatic retry or resume. Dry runs instead fetch and validate all
 chunks, then preview the combined last-observed event map once, without writing
 statistics, inventory metadata, saved evidence, or backfill progress. Dry runs
 hold that combined event map in memory.
+Unloading the integration also stops manual actions before their next chunk
+fetch; an already in-flight chunk can finish through the normal commit path.
 
 `events_fetched` counts received observations, including overlaps/duplicates;
 `events_unique` counts distinct device-scoped event IDs and `duplicate_events`
 is their difference. Neither counter is a water volume. Live `imported_rows`
-counts writes across chunks (an hour may be rewritten more than once), while a
+counts planned/verified rows across chunks (an hour may appear more than once), while a
 dry run reports the net projected rows for the combined final observations.
 
 These controls use the same correction-safe importer as

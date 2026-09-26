@@ -266,13 +266,14 @@ response fail. Errors stop later fetches without clearing prior chunks; a
 partially written current chunk may need normal pending recovery. Backfill
 status persists completed chunks and the remaining range, not an automatic
 resume instruction. Explicit retry of the remaining or entire original range
-is safe. No unattended retries/resume are added.
+is safe. No unattended retries/resume are added. Unload stops subsequent chunk
+fetches even for manual actions; an in-flight chunk may finish its commit.
 
 Dry runs validate every chunk, merge the last observation per ID in memory,
 and preview that combined map once against the unchanged ledger. They do not
 register inventory, write Recorder/evidence, recover pending work, or persist
-backfill progress. Their net projected row count need not equal live cumulative
-chunk write counts. `events_fetched` counts all received observations,
+backfill progress. Their net projected row count need not equal the cumulative
+planned/verified row counts across live chunks. `events_fetched` counts all received observations,
 `events_unique` counts distinct IDs, and `duplicate_events` is the difference.
 
 `tests/test_history_chunking.py` compares actual Recorder rows and accepted

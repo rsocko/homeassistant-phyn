@@ -1,7 +1,6 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
 from datetime import datetime, timezone
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
@@ -328,13 +327,17 @@ class PhynPlusDevice(PhynDevice):
                 self.configured_fixture_categories
             )
 
+        async def fetch(*, from_ts: int, to_ts: int) -> list[dict[str, Any]]:
+            if self._fixture_stopping:
+                raise HomeAssistantError("Phyn fixture imports are stopping")
+            return await self._coordinator.api_client.device.get_water_usage_events(
+                self._phyn_device_id, from_ts=from_ts, to_ts=to_ts,
+            )
+
         return await async_import_history(
             self._coordinator.hass,
             self._fixture_stats_importer,
-            partial(
-                self._coordinator.api_client.device.get_water_usage_events,
-                self._phyn_device_id,
-            ),
+            fetch,
             int(from_dt.timestamp() * 1000), int(to_dt.timestamp() * 1000),
             force_reimport=force_reimport, dry_run=dry_run,
             progress_callback=progress_callback,

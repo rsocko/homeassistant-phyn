@@ -262,7 +262,7 @@ async def _async_execute_fixture_statistics_import(
             "absent events are retained. Fixture series represent labels, not physical fixture identities."
             " Requests use sequential seven-day windows with a one-millisecond internal overlap."
             " events_fetched includes repeated observations; events_unique counts distinct device-scoped IDs."
-            " Live imported_rows counts row writes across chunks; dry runs project the combined final observations."
+            " Live imported_rows counts planned/verified rows across chunks; dry runs project the combined final observations."
         )
         if force_reimport and not dry_run:
             note += " Force mode replayed observed events without clearing historical statistics."
