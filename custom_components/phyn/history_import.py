@@ -124,7 +124,7 @@ async def async_import_history(
         raise
     except (
         HomeAssistantError, AuthenticationError, RequestError, ClientError,
-        OSError, ValueError, TimeoutError,
+        OSError, ValueError, TypeError, OverflowError, TimeoutError,
     ) as err:
         remaining = datetime.fromtimestamp(
             progress["remaining_start_ms"] / 1000, timezone.utc
@@ -135,7 +135,12 @@ async def async_import_history(
             if dry_run else
             "Earlier verified chunks are retained; the current chunk may need pending recovery."
         )
+        retry = (
+            f"Retry the original range or the remaining range {remaining} to {end}."
+            if progress["remaining_start_ms"] < end_ms else
+            "All data chunks were processed; retry the original range to confirm completion."
+        )
         raise HomeAssistantError(
             f"History import stopped after {progress['chunks_completed']}/{total} chunks. "
-            f"Retry the original range or the remaining range {remaining} to {end}. {disposition}"
+            f"{retry} {disposition}"
         ) from err

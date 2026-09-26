@@ -171,6 +171,12 @@ async def test_chunked_matches_whole_ids_category_totals_and_every_recorder_row(
     )
     assert repeated["imported_rows"] == 0
     assert await recorder_rows(hass, recorder_mock, device._fixture_stats_importer) == actual_rows
+    forced = await device.async_import_fixture_statistics(
+        from_datetime=START, to_datetime=START + timedelta(days=31), force_reimport=True,
+    )
+    assert forced["force_reimport"] == 1
+    assert forced["cleared_statistic_ids"] == 0
+    assert await recorder_rows(hass, recorder_mock, device._fixture_stats_importer) == actual_rows
     await device.async_shutdown()
 
 
@@ -323,4 +329,23 @@ async def test_cancellation_between_chunks_keeps_verified_progress(hass, recorde
     assert callback.await_args_list[-1].args[0]["chunks_completed"] == 1
     assert set(device._fixture_stats_importer._state.events) == {"first"}
     assert not device.fixture_import_running
+    await device.async_shutdown()
+
+
+async def test_progress_save_error_after_final_commit_does_not_report_empty_retry_range(
+    hass, recorder_mock
+):
+    device = make_device(hass, AsyncMock(return_value=[event("first", DAY_MS, 2)]))
+
+    async def report(progress):
+        if progress["chunks_completed"] == 1:
+            raise OSError("progress storage failed")
+
+    with pytest.raises(HomeAssistantError, match="All data chunks were processed"):
+        await device.async_import_fixture_statistics(
+            from_datetime=START, to_datetime=START + timedelta(days=7),
+            progress_callback=report,
+        )
+    assert set(device._fixture_stats_importer._state.events) == {"first"}
+    assert device._fixture_stats_importer._pending is None
     await device.async_shutdown()

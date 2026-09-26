@@ -26,7 +26,10 @@ async def test_fixture_import_uses_millisecond_api(
     hass, dry_run, force_reimport, handler
 ):
     """All import modes use the published timestamp API without changing events."""
-    events = [{"id": "event_1", "total_flow": 1.5}]
+    events = [{
+        "id": "event_1", "total_flow": 1.5,
+        "close_edge_timestamp": 1788235260000,
+    }]
     api_device = create_autospec(Device, instance=True)
     fetch = api_device.get_water_usage_events
     fetch.return_value = events
@@ -67,7 +70,10 @@ async def test_fixture_import_uses_millisecond_api(
         if other not in (handler, "async_initialize"):
             getattr(importer, other).assert_not_awaited()
     importer.async_initialize.assert_awaited_once()
-    assert result == {"imported_rows": 1}
+    assert result["imported_rows"] == 1
+    assert result["events_fetched"] == result["events_unique"] == 1
+    assert result["chunks_completed"] == result["chunks_total"] == 1
+    assert result["duplicate_events"] == 0
 
 
 @pytest.mark.asyncio

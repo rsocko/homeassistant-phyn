@@ -16,6 +16,7 @@ from custom_components.phyn.const import DOMAIN
 from custom_components.phyn.devices.pp import PhynPlusDevice
 from custom_components.phyn.number import PhynHistoryBackfillDays
 from custom_components.phyn.sensor import PhynHistoryBackfillStatus
+from custom_components.phyn.history_import import CHUNK_MS
 
 
 RESULT = {"imported_rows": 4, "events_fetched": 0, "corrections_detected": 1}
@@ -142,6 +143,25 @@ async def test_failure_preserves_last_success_and_can_retry(device, caplog):
     await backfill._task
     assert backfill.data["status"] == "completed"
     assert backfill.data["error"] is None
+
+
+async def test_failed_later_chunk_persists_partial_progress_and_remaining_range(device):
+    backfill = device.history_backfill
+    await backfill.async_set_days(21)
+    fetch = device.coordinator.api_client.device.get_water_usage_events
+    fetch.side_effect = [[], HomeAssistantError("second chunk failed")]
+    await backfill.async_start()
+    await backfill._task
+    assert fetch.await_count == 2
+    assert backfill.data["status"] == "failed"
+    assert backfill.data["chunks_completed"] == 1
+    assert backfill.data["chunks_total"] == 3
+    assert backfill.data["imported_rows"] == RESULT["imported_rows"]
+    start = datetime.fromisoformat(backfill.data["start_datetime"])
+    assert backfill.data["remaining_start_ms"] == int(start.timestamp() * 1000) + CHUNK_MS - 1
+    restored = PhynHistoryBackfill(device)
+    await restored.async_initialize()
+    assert restored.data == backfill.data
 
 
 async def test_duplicate_presses_rejected_and_days_snapshot_is_fixed(device):
