@@ -249,6 +249,44 @@ developer state pauses fixture statistics only, with a persistent notice; normal
 sensors and controls continue. See the runbook for readback/recovery limits;
 there is no automatic migration or history clear.
 
+### Optional configured fixture counts
+
+Phyn Plus (PP1/PP2) monitors expose read-only **Configured [category] count**
+sensors, such as "Configured Toilet count". These are the inventory counts
+configured in the Phyn app, not detected fixtures, individual physical devices,
+or consumption measurements. They belong to the existing Phyn monitor.
+
+Count sensors are **disabled by default**. In **Settings > Devices & services >
+Entities**, filter by the Phyn integration, show disabled entities, and enable
+only the configured counts you want. Each category returned by Phyn is available,
+including zero-count categories; a zero count never suppresses usage history.
+IDs use the monitor and category ID, not the category's display name.
+
+Inventory is fetched at sensor setup and approximately hourly, independently of
+monitor and usage refreshes, including when all count entities are disabled so
+new categories can be discovered. New categories also start disabled. Missing
+categories or failed/invalid responses make affected counts unavailable, not
+zero; a successful later refresh restores them. Existing entities are not
+deleted when a count becomes zero or a category disappears. Changes to counts
+must be made in the Phyn app; Home Assistant provides no inventory writeback.
+
+These entities have no water device class, volume unit, or statistics-generating
+state class, so they are not Energy water-consumption sources. Their ordinary
+entity History shows recorded inventory-count changes only, not imported usage.
+There are no additional category usage-summary entities or duplicate consumption
+statistics. Existing imported `phyn:` statistics remain the category usage source
+and retain their existing IDs, correction handling, and attribution limitations.
+
+For a native dashboard, put selected count entities in an **Entities** card
+titled "Configured inventory", beside a **Statistics Graph** card titled
+"Historical category water usage". In the graph, select the corresponding
+external `phyn:` statistic IDs from **Developer Tools > Statistics**, use
+`stat_types: [change]`, `period: day`, and `chart_type: bar`. These graphs need no
+count entities to exist or be enabled. Energy's **Individual water devices** can
+also use the same external statistics. Do not substitute a count sensor or add
+category usage again as a second whole-house water source. This is dashboard
+presentation, not a link between entity History and external statistics.
+
 ### Fixture attribution and review
 
 Review and correct event attribution in the **Phyn app** for now. Home Assistant
