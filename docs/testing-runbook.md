@@ -247,8 +247,17 @@ Missing events in a response are **never deletions**. Server result caps,
 pagination/completeness, revision ordering, boundary semantics and event-ID
 stability remain unknown. The services' `days` range of **1-365**, or explicit
 `start_datetime`/`end_datetime`, selects a request window; it does not guarantee
-complete returned history. The 365-day limit is local to the day selector;
-explicit date ranges have no equivalent cap. A bounded read-only September 26,
+complete returned history. The 365-day limit is an arbitrarily chosen local
+guard for the day selector, not a discovered SDK/API maximum or proven safe
+request size; explicit date ranges have no equivalent cap.
+
+For long pulls, prefer bounded sequential chunks using explicit date ranges,
+checking each result before proceeding and stopping on errors. This is an
+operational recommendation, **not implemented automatic chunking**: the current
+importer sends the selected range in one logical API request, and the SDK does
+not paginate it. Successful chunks still do not prove cloud completeness.
+
+A bounded read-only September 26,
 2026 probe on one monitor accepted 1, 7, 31, 90, 365, and 366-day ranges ending at
 00:00 UTC that day. The 366-day response included actual events in the extra
 day. A 730-day request returned HTTP 504 at approximately 29 seconds; the

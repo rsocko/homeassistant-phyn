@@ -250,7 +250,8 @@ expiry. Corrections use the last locally observed contribution per device-scoped
 event ID, not a proven newest server revision. Omitted events are not deleted.
 `force_reimport: true` and reload reconcile observations without clearing whole
 series; use `dry_run: true` with an explicit timeframe to preview writes.
-The 1-365 day selector is a local guard, not a proven API retention limit.
+The 1-365 day selector uses an arbitrarily chosen local guard, not a discovered
+SDK/API maximum, proven retention limit, or guarantee that a request will succeed.
 Explicit date ranges are not capped at 365 days. Neither guarantees complete
 returned history. Labels describe
 fixture categories, not proven individual household fixtures. Unsupported
@@ -263,7 +264,8 @@ there is no automatic migration or history clear.
 Each selected Phyn Plus (PP1/PP2) monitor offers native controls on its device
 page, under Configuration:
 
-- **Backfill days**: days to request, from 1 to 365, initially 7. This local
+- **Backfill days**: days to request, from 1 to 365, initially 7. The maximum
+  is an arbitrarily chosen local guard, not a discovered API limit. This local
   setting survives reloads/restarts; changing it does not start an import.
 - **Backfill category history**: requests that monitor's category events for
   the selected number of elapsed days ending at the press time, in UTC.
@@ -306,7 +308,11 @@ completeness/result-cap guarantee. Successful overlapping responses in that
 probe contained the shorter requests' event IDs, but this still does not prove
 complete history or universal retention. Start with a short range; use smaller
 explicit date windows through the existing actions instead of one very large
-request. The device control retains its conservative 365-day local guard.
+request. Run these chunks sequentially, checking each result before continuing;
+stop on errors rather than repeatedly retrying an oversized request. Automatic
+chunking is **not implemented**: the current importer sends the whole selected
+range in one logical API request. The device control retains its arbitrarily
+chosen 365-day local guard, not a demonstrated safe maximum for every monitor.
 Any further retention investigation should use bounded older known-activity
 windows and repeated/split-window comparisons. An empty old window alone is
 not evidence of a retention limit.

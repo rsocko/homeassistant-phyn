@@ -13,7 +13,7 @@ leak_test:
 
 import_fixture_statistics:
   name: Import fixture statistics
-  description: Import fixture water usage events into Home Assistant long-term statistics
+  description: Import fixture water usage events into Home Assistant long-term statistics. One logical API request covers the whole range; automatic chunking is not implemented. For long pulls, run smaller explicit date ranges sequentially and check each result.
   fields:
     entity_id:
       name: Entity
@@ -29,7 +29,7 @@ import_fixture_statistics:
         text:
     days:
       name: Days
-      description: Days to request when start/end are not provided; 365 is a local limit, not a guarantee of available or complete cloud history
+      description: Days to request when start/end are not provided; 365 is an arbitrarily chosen local guard, not a discovered SDK/API maximum or a guarantee of available or complete history
       required: false
       default: 1
       selector:
@@ -66,7 +66,7 @@ import_fixture_statistics:
 
 reload_fixture_statistics:
   name: Reload corrected fixture statistics
-  description: Reconcile last-observed event corrections while preserving unrelated history; cloud completeness is not guaranteed
+  description: Reconcile last-observed event corrections while preserving unrelated history; cloud completeness is not guaranteed. One logical API request covers the whole range; automatic chunking is not implemented. For long pulls, run smaller explicit date ranges sequentially and check each result.
   fields:
     entity_id:
       name: Entity
@@ -82,7 +82,7 @@ reload_fixture_statistics:
         text:
     days:
       name: Days
-      description: Days to request when start/end are not provided; 365 is a local limit, not a guarantee of available or complete cloud history
+      description: Days to request when start/end are not provided; 365 is an arbitrarily chosen local guard, not a discovered SDK/API maximum or a guarantee of available or complete history
       required: false
       default: 7
       selector:
