@@ -162,7 +162,12 @@ def _event(key, time, volume, label="Kitchen"):
         },
     }
 
-async def test_home_names_update_without_rewriting_history(hass, recorder_mock, monkeypatch):
+@pytest.mark.parametrize(("display_context", "expected_prefix"), [
+    (None, "Phyn Cape -"), ("", "Phyn"),
+])
+async def test_home_names_update_without_rewriting_history(
+    hass, recorder_mock, monkeypatch, display_context, expected_prefix
+):
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Old home")
     events = [_event("one", start, 4), _event("two", start, 2, "Toilet")]
@@ -179,7 +184,9 @@ async def test_home_names_update_without_rewriting_history(hass, recorder_mock, 
         metadata["name"] = f"Phyn {label} Water"
         async_add_external_statistics(hass, metadata, [])
     await async_recorder_block_till_done(hass)
-    renamed = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    renamed = PhynFixtureStatisticsImporter(
+        hass, "device", home_name="Cape", display_context=display_context
+    )
     await renamed.async_preview_import_events([])
     metadata = await recorder_mock.async_add_executor_job(
         partial(get_metadata, hass, statistic_ids=set(identifiers.values()))
@@ -196,20 +203,44 @@ async def test_home_names_update_without_rewriting_history(hass, recorder_mock, 
     monkeypatch.setattr(fixture_module, "async_add_external_statistics", record_write)
     result = await renamed.async_import_events([])
     assert result["imported_rows"] == 0
-    assert len(calls) == 2
+    assert len(calls) == (2 if display_context is None else 0)
     assert all(rows == [] for _, rows in calls)
     assert await renamed._store.async_load() == saved
     metadata = await recorder_mock.async_add_executor_job(
         partial(get_metadata, hass, statistic_ids=set(identifiers.values()))
     )
     for label, identifier in identifiers.items():
-        assert metadata[identifier][1]["name"] == f"Phyn Cape - {label} Water"
+        assert metadata[identifier][1]["name"] == f"{expected_prefix} {label} Water"
         assert await _read_rows(
             hass, recorder_mock, start - timedelta(hours=1), identifier
         ) == before[label]
     calls.clear()
     await renamed.async_import_events(events)
     assert calls == []
+
+
+async def test_switching_to_one_monitor_removes_prefix_without_losing_history(
+    hass, recorder_mock
+):
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await importer.async_register_categories({"Dishwasher"})
+    await importer.async_import_events([_event("one", start, 4, "Toilet")])
+    saved = deepcopy(await importer._store.async_load())
+    restored = PhynFixtureStatisticsImporter(
+        hass, "device", home_name="Cape", display_context=""
+    )
+    await restored.async_import_events([])
+    assert await restored._store.async_load() == saved
+    metadata = await recorder_mock.async_add_executor_job(
+        partial(get_metadata, hass, statistic_ids=set(restored._state.fixture_ids.values()))
+    )
+    for label, identifier in restored._state.fixture_ids.items():
+        assert metadata[identifier][1]["name"] == f"Phyn {label} Water"
+    assert restored.usage_statistics() == {
+        fixture_statistic_id("device", "Toilet"): "Phyn Toilet Water"
+    }
+    assert restored.home_name == "Cape"
 
 
 async def test_home_rename_does_not_bypass_evidence_checks(hass, recorder_mock):

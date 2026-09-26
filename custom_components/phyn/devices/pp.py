@@ -68,6 +68,7 @@ class PhynPlusDevice(PhynDevice):
         home_name: str = "",
         *,
         statistics_home_name: str = "",
+        statistics_display_context: str | None = None,
     ) -> None:
         """Initialize the device."""
         super().__init__(coordinator, home_id, device_id, product_code, home_name)
@@ -91,6 +92,7 @@ class PhynPlusDevice(PhynDevice):
             coordinator.hass,
             self._phyn_device_id,
             home_name=statistics_home_name or home_name,
+            display_context=statistics_display_context,
         )
 
         self.entities = [

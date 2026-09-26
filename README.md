@@ -294,6 +294,12 @@ Starting with beta 4, external category statistics include the Phyn home
 name, for example **Phyn Cape - Toilet Water**. This uses the home name from
 Phyn, not a Home Assistant device nickname, and falls back to an identifier if
 the name is unavailable. Reload the integration after renaming a home in Phyn.
+In development after beta 4, the home prefix is shown only when more than one
+category-usage monitor (PP1/PP2) is selected in this HA integration. With one
+selected monitor the name is **Phyn Toilet Water**. Unselected monitors and
+Smart Water Sensors do not affect this rule. If selected monitors have identical
+home names, their device identifiers are included to distinguish them. Changing
+device selection refreshes display names without changing statistic IDs.
 The next successful non-dry-run fixture import refreshes existing display names,
 including categories absent from the latest event batch. Statistic IDs, category
 labels in saved evidence, consumption rows, and Energy selections are preserved.

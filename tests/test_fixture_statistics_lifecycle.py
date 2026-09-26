@@ -10,7 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.phyn.devices.pp import PhynPlusDevice
 from custom_components.phyn.fixture_statistics import PhynFixtureStatisticsImporter
-from custom_components.phyn import async_unload_entry
+from custom_components.phyn import async_unload_entry, _fixture_statistics_contexts
 from custom_components.phyn.const import CLIENT, DOMAIN
 from custom_components.phyn.update_coordinator import PhynDataUpdateCoordinator
 
@@ -20,13 +20,38 @@ async def test_single_home_name_reaches_statistics_without_renaming_device(hass)
         hass, SimpleNamespace(), SimpleNamespace(options={})
     )
     coordinator.add_device(
-        "home", "device", "PP1", statistics_home_name="Cape"
+        "home", "device", "PP1", statistics_home_name="Cape",
+        statistics_display_context="",
     )
     device = coordinator.devices[0]
     assert device._phyn_home_name == ""
     assert device._fixture_stats_importer._metadata("Toilet", "phyn:test")["name"] == (
-        "Phyn Cape - Toilet Water"
+        "Phyn Toilet Water"
     )
+    assert device._fixture_stats_importer.home_name == "Cape"
+
+
+@pytest.mark.parametrize(("selected", "expected"), [
+    ([], {}),
+    (["a"], {"a": ""}),
+    (["a", "a"], {"a": ""}),
+    (["a", "missing"], {"a": ""}),
+    (["a", "sensor"], {"a": ""}),
+    (["a", "classic"], {"a": ""}),
+    (["a", "b"], {"a": "Cape", "b": "NTK"}),
+    (["a", "same_home"], {"a": "Cape (a)", "same_home": "Cape (same_home)"}),
+    (["a", "same_name"], {"a": "Cape (a)", "same_name": "Cape (same_name)"}),
+])
+def test_statistics_context_counts_only_selected_usage_monitors(selected, expected):
+    account = {
+        "a": {"home_id": "home_a", "home_name": "Cape", "product_code": "PP1"},
+        "b": {"home_id": "home_b", "home_name": "NTK", "product_code": "PP2"},
+        "sensor": {"home_id": "home_a", "home_name": "Cape", "product_code": "PW1"},
+        "classic": {"home_id": "home_b", "home_name": "NTK", "product_code": "PC1"},
+        "same_home": {"home_id": "home_a", "home_name": "Cape", "product_code": "PP2"},
+        "same_name": {"home_id": "home_c", "home_name": "Cape", "product_code": "PP1"},
+    }
+    assert _fixture_statistics_contexts(account, selected) == expected
 
 
 async def test_statistics_names_distinguish_homes_and_have_identifier_fallback(hass):

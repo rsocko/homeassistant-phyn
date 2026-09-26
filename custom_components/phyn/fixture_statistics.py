@@ -430,11 +430,15 @@ class PhynFixtureStatisticsImporter:
     """Keep local accepted evidence and verify absolute Recorder writes before commit."""
 
     def __init__(
-        self, hass: HomeAssistant, device_id: str, *, home_name: str = ""
+        self, hass: HomeAssistant, device_id: str, *, home_name: str = "",
+        display_context: str | None = None,
     ) -> None:
         self._hass = hass
         self._device_id = device_id
         self._home_name = home_name.strip() or device_id
+        self._display_context = (
+            self._home_name if display_context is None else display_context.strip()
+        )
         self._store: Store[dict[str, Any]] = Store(
             hass, FIXTURE_STATS_STORE_VERSION, f"{DOMAIN}_fixture_stats_{device_id.lower()}"
         )
@@ -552,10 +556,14 @@ class PhynFixtureStatisticsImporter:
             self._notice(self._blocked_reason)
             raise HomeAssistantError(self._blocked_reason)
 
+    def _statistic_name(self, label: str) -> str:
+        prefix = f"Phyn {self._display_context} -" if self._display_context else "Phyn"
+        return f"{prefix} {label} Water"
+
     def _metadata(self, label: str, identifier: str) -> StatisticMetaData:
         return StatisticMetaData(
             mean_type=StatisticMeanType.NONE, has_sum=True,
-            name=f"Phyn {self._home_name} - {label} Water",
+            name=self._statistic_name(label),
             source=DOMAIN, statistic_id=identifier,
             unit_class=VolumeConverter.UNIT_CLASS, unit_of_measurement=UnitOfVolume.GALLONS,
         )
@@ -599,7 +607,7 @@ class PhynFixtureStatisticsImporter:
             if event["volume"] > 0
         }
         return {
-            self._state.fixture_ids[label]: f"Phyn {self._home_name} - {label} Water"
+            self._state.fixture_ids[label]: self._statistic_name(label)
             for label in sorted(labels)
         }
 

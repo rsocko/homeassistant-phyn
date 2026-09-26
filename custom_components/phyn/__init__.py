@@ -1,5 +1,6 @@
 """The phyn integration."""
 import asyncio
+from collections import Counter
 import logging
 
 from aiophyn import async_get_api
@@ -29,6 +30,25 @@ PLATFORMS = [Platform.BINARY_SENSOR, Platform.EVENT, Platform.SENSOR, Platform.S
 
 # aiophyn bounds disconnect_and_wait() itself (10s); this is a backstop only.
 MQTT_DISCONNECT_TIMEOUT = 15
+
+
+def _fixture_statistics_contexts(
+    account_devices: dict[str, dict], selected_ids: list[str]
+) -> dict[str, str]:
+    """Disambiguate only the selected monitors that provide category usage."""
+    monitors = {
+        device_id: account_devices[device_id]["home_name"]
+        for device_id in selected_ids
+        if device_id in account_devices
+        and account_devices[device_id]["product_code"] in ("PP1", "PP2")
+    }
+    if len(monitors) <= 1:
+        return {device_id: "" for device_id in monitors}
+    name_counts = Counter(monitors.values())
+    return {
+        device_id: f"{name} ({device_id})" if name_counts[name] > 1 else name
+        for device_id, name in monitors.items()
+    }
 
 
 async def _async_disconnect_mqtt(client) -> None:
@@ -179,6 +199,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if d in all_account_devices
     }
     multi_home = len(selected_home_ids) > 1
+    statistics_contexts = _fixture_statistics_contexts(all_account_devices, device_ids)
 
     device_registry = dr.async_get(hass)
     for dev_entry in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
@@ -199,6 +220,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator.add_device(
                     info["home_id"], device_id, info["product_code"], home_name,
                     statistics_home_name=info["home_name"],
+                    statistics_display_context=statistics_contexts.get(device_id),
                 )
             else:
                 _LOGGER.warning(

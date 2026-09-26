@@ -57,7 +57,7 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
     
     def add_device(
         self, home_id: str, device_id: str, product_code: str, home_name: str = "",
-        *, statistics_home_name: str = "",
+        *, statistics_home_name: str = "", statistics_display_context: str | None = None,
     ) -> None:
         """Add a device to the coordinator."""
         if product_code in ["PP1","PP2"]:
@@ -65,6 +65,7 @@ class PhynDataUpdateCoordinator(DataUpdateCoordinator[None]):
                 PhynPlusDevice(
                     self, home_id, device_id, product_code, home_name,
                     statistics_home_name=statistics_home_name,
+                    statistics_display_context=statistics_display_context,
                 )
             )
         elif product_code in ["PC1"]:
