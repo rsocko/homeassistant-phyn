@@ -306,7 +306,14 @@ async def test_configured_category_registration_is_metadata_only(hass, recorder_
     rows = await _read_rows(
         hass, recorder_mock, start - timedelta(days=61), identifiers["Toilet"]
     )
-    assert [row["sum"] for row in rows] == [0, 2, 5]
+    # Reconciliation preserves the original event baseline hour as well.
+    assert [row["sum"] for row in rows] == [0, 2, 2, 5]
+    assert [row["start"] for row in rows] == [
+        (start - timedelta(days=60, hours=1)).timestamp(),
+        (start - timedelta(days=60)).timestamp(),
+        (start - timedelta(hours=1)).timestamp(),
+        start.timestamp(),
+    ]
     assert await _read_rows(
         hass, recorder_mock, start - timedelta(days=61), identifiers["Dishwasher"]
     ) == []
