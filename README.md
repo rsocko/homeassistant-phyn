@@ -294,14 +294,22 @@ IDs, create sensor-generated water statistics, or write to Phyn. Advanced
 start/end dates and dry runs remain available in **Developer Tools > Actions**.
 This development-branch addition is not included in the published beta 5.
 
-**API history availability is not established.** Existing verified captures
-cover a completed seven-day window, not a retention-boundary investigation.
+**The maximum API history depth is not established.** A bounded read-only probe
+on September 26, 2026 accepted 1, 7, 31, 90, 365, and 366-day requests on one
+monitor. The 366-day response included an additional day's events beyond the
+365-day response: 365 is not an API ceiling for that monitor. A 730-day request
+returned HTTP 504 after about 29 seconds; testing stopped at that server error.
+This was not explicit date/length validation and does not establish a maximum.
+
 The SDK makes one logical history request without pagination or a proven
-completeness/result-cap guarantee. Start with a short range; a longer request
-does not establish that all history in that range was returned. A future
-read-only investigation should compare small older windows with known activity,
-repeat requests, and compare combined vs separate windows within an agreed
-request budget. An empty old window alone is not evidence of a retention limit.
+completeness/result-cap guarantee. Successful overlapping responses in that
+probe contained the shorter requests' event IDs, but this still does not prove
+complete history or universal retention. Start with a short range; use smaller
+explicit date windows through the existing actions instead of one very large
+request. The device control retains its conservative 365-day local guard.
+Any further retention investigation should use bounded older known-activity
+windows and repeated/split-window comparisons. An empty old window alone is
+not evidence of a retention limit.
 
 ### Optional configured fixture counts
 
