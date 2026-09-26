@@ -92,6 +92,9 @@ jobs:
             2>&1 | tee validation-results/install.txt
           python -m pip check | tee validation-results/pip-check.txt
 
+      - name: Check generated English translations
+        run: python scripts/sync_translations.py --check
+
       - name: Record exact source and dependency provenance
         run: |
           {

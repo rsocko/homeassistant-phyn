@@ -35,12 +35,6 @@
         }
     },
     "entity": {
-        "button": {
-            "history_backfill": { "name": "Backfill category history" }
-        },
-        "number": {
-            "history_backfill_days": { "name": "Backfill days" }
-        },
         "binary_sensor": {
             "alert_battery": {
                 "name": "Battery Alert"
@@ -79,22 +73,22 @@
                 "name": "Leak Test Warning"
             }
         },
+        "button": {
+            "history_backfill": {
+                "name": "Backfill category history"
+            }
+        },
         "event": {
             "alert_event": {
                 "name": "Alert"
             }
         },
+        "number": {
+            "history_backfill_days": {
+                "name": "Backfill days"
+            }
+        },
         "sensor": {
-            "history_backfill_status": {
-                "name": "History backfill status",
-                "state": {
-                    "idle": "Idle",
-                    "running": "Running",
-                    "completed": "Completed",
-                    "failed": "Failed",
-                    "interrupted": "Interrupted"
-                }
-            },
             "air_temperature": {
                 "name": "Air Temperature"
             },
@@ -109,6 +103,16 @@
             },
             "daily_consumption": {
                 "name": "Daily water usage"
+            },
+            "history_backfill_status": {
+                "name": "History backfill status",
+                "state": {
+                    "completed": "Completed",
+                    "failed": "Failed",
+                    "idle": "Idle",
+                    "interrupted": "Interrupted",
+                    "running": "Running"
+                }
             },
             "humidity": {
                 "name": "Humidity"
@@ -162,23 +166,23 @@
             "message": "Authentication failed. Please reauthenticate."
         }
     },
+    "issues": {
+        "energy_coverage": {
+            "description": "These categories have positive usage in Phyn's accepted imported history but are not selected under Energy's Individual water devices:\n\n{statistics}\n\nAdd the desired statistics in [Energy configuration](/config/energy), or exclude intentional omissions in the Phyn integration's options. Checks run every five minutes and cover all selected homes; resolving an omission clears this warning automatically. This checks imported history, not cloud completeness or attribution accuracy. No dashboard settings or usage data have been changed.",
+            "title": "Phyn usage missing from Energy: {home}"
+        }
+    },
     "options": {
         "step": {
             "init": {
                 "data": {
-                    "excluded_alert_types": "Suppress these alert types",
                     "energy_coverage": "Warn about imported water usage missing from Energy",
-                    "energy_coverage_excluded": "Intentionally omit these usage statistics from coverage warnings"
+                    "energy_coverage_excluded": "Intentionally omit these usage statistics from coverage warnings",
+                    "excluded_alert_types": "Suppress these alert types"
                 },
                 "description": "Configure alerts and optional Energy dashboard coverage warnings. Coverage checks all selected Phyn homes and never changes your dashboard.",
                 "title": "Phyn Options"
             }
-        }
-    },
-    "issues": {
-        "energy_coverage": {
-            "title": "Phyn usage missing from Energy: {home}",
-            "description": "These categories have positive usage in Phyn's accepted imported history but are not selected under Energy's Individual water devices:\n\n{statistics}\n\nAdd the desired statistics in [Energy configuration](/config/energy), or exclude intentional omissions in the Phyn integration's options. Checks run every five minutes and cover all selected homes; resolving an omission clears this warning automatically. This checks imported history, not cloud completeness or attribution accuracy. No dashboard settings or usage data have been changed."
         }
     },
     "services": {

@@ -318,7 +318,7 @@ series; omission still preserves history. Use `dry_run: true` to preview a
 bounded request before writes. Preview does not write or recover a pending
 operation and reports an error when earlier work is pending.
 
-### Native backfill controls (unreleased development branch)
+### Native backfill controls (beta 6)
 
 The PP1/PP2 button, number, and diagnostic status use the same device importer.
 `phyn_history_backfill_<device_id>` stores only local control settings and job
@@ -364,7 +364,7 @@ does not automatically select the aiophyn fork. The README's upstream HACS
 distribution does not install this fork's fixture additions. Both integrations
 use domain `phyn`; do not install upstream and this fork side by side.
 
-The opt-in integration prerelease **v2026.9.2-beta.5** selects the public
+The opt-in integration prerelease **v2026.9.2-beta.6** selects the public
 **aiophyn 2026.9.2.dev1** wheel from the fork's **v2026.9.2.dev1** release.
 The exact URL and SHA-256 are recorded in `custom_components/phyn/manifest.json`.
 The library release includes its wheel, source distribution and checksums.
@@ -419,19 +419,19 @@ The operator performs installation and restarts; production remains unchanged.
    **Settings > Devices & services > Entities**, filtered to HACS, including
    disabled entities. Enable the entity if needed, then turn its switch on
    ("Pre-releases preferred"). Return to HACS, select **Update information**,
-   then **Download/Redownload > Need a different version? > v2026.9.2-beta.5**.
+   then **Download/Redownload > Need a different version? > v2026.9.2-beta.6**.
    A UI may omit the leading `v`.
    An installed/latest SHA such as `ff0004b` is the old default branch, not this
    release. If the selected version is absent, stop rather than installing the
    default branch or editing the installed manifest.
-7. Restart HA normally. HACS should report `2026.9.2-beta.5`; HA must not report
+7. Restart HA normally. HACS should report `2026.9.2-beta.6`; HA must not report
    dependency/setup failures. HA installs the exact manifest wheel without a
    separate `pip install`, editable checkout or `--skip-pip` flag.
 8. Configure Phyn in **Settings > Devices & services** only if it is not already
    configured. Normal polling can immediately import usage into the **dev**
    Recorder; a service dry-run does not disable these background imports.
 9. Verify devices/entities and logs. The integration manifest version is
-   `2026.9.2-beta.5`; installed library distribution and `aiophyn.__version__`
+   `2026.9.2-beta.6`; installed library distribution and `aiophyn.__version__`
    must both be `2026.9.2.dev1`, with the manifest URL as installation provenance.
    The manifest checksum is exercised by CI's installer and installed-file checks;
    HA's uv may leave the metadata hash empty. A read-only inspection from the same container Python environment
@@ -450,9 +450,13 @@ The operator performs installation and restarts; production remains unchanged.
     app-based attribution edits separate and deliberate: they modify the real
     account. HA review/editing remains future work (#1/#2 in this repository).
 
-### Beta 5 inventory and Energy coverage checks
+### Beta 6 inventory, backfill, and Energy coverage checks
 
-Upgrading a working beta 2, beta 3, or beta 4 installation requires no statistics reset, storage
+The [beta 6 tester guide](beta6-tester-guide.md) provides the shorter installation,
+backfill, replay, and issue-reporting checklist. Betas 1-5 are superseded but
+their tags/releases are retained. Beta 1 has the Logbook defect documented below.
+
+Upgrading a working beta 2, beta 3, beta 4, or beta 5 installation requires no statistics reset, storage
 file changes, or removal/recreation of the Phyn config entry. Historical series
 IDs and the ledger schema are unchanged. The same pinned aiophyn development
 wheel remains in use; this is not a new SDK release.

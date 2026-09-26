@@ -9,6 +9,8 @@ This integration currently provides the following capabilities:
 - Daily water usage (compatible with Energy dashboard)
 - Per-fixture water usage statistics, historical imports, and correction reloads (this fork)
 - Optional read-only configured fixture-category counts for Phyn Plus (this fork)
+- Per-monitor history backfill controls with chunked imports and progress (this fork)
+- Optional warnings for imported category usage missing from Energy (this fork)
 - Average water temperature, pressure, and flow (realtime not available)
 - Shutoff valve control
 - Away mode control
@@ -17,10 +19,15 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This fork's opt-in development release is **2026.9.2-beta.5**, requiring
+This fork's opt-in development release is **2026.9.2-beta.6**, requiring
 **Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
 guarantee for every newer release. It is intended for backed-up development
 instances first, not an automatic production upgrade.
+
+**Start here:** [Beta 6 installation, features, and tester checklist](docs/beta6-tester-guide.md).
+For a short announcement, see the [copy-ready GitHub discussion draft](docs/beta6-discussion.md).
+Beta 6 supersedes betas 1-5; their releases and tags remain available for historical
+reference. Use beta 6 for new testing.
 
 HACS downloads the integration; HA installs its exact, checksum-pinned aiophyn
 development wheel. **Do not install aiophyn manually or select the moving
@@ -36,7 +43,7 @@ development wheel. **Do not install aiophyn manually or select the moving
    Enable the entity if disabled, then turn the switch on. Return to HACS and
    select **Update information**.
 4. Choose **Download** or **Redownload**, open **Need a different version?**, and
-   select **v2026.9.2-beta.5** (some UIs omit the `v`).
+   select **v2026.9.2-beta.6** (some UIs omit the `v`).
 5. Restart Home Assistant and verify the installed version before configuring
    Phyn or running the bounded checks in the runbook.
 
@@ -259,7 +266,7 @@ developer state pauses fixture statistics only, with a persistent notice; normal
 sensors and controls continue. See the runbook for readback/recovery limits;
 there is no automatic migration or history clear.
 
-### Device history backfill controls (development branch)
+### Device history backfill controls (beta 6)
 
 Each selected Phyn Plus (PP1/PP2) monitor offers native controls on its device
 page, under Configuration:
@@ -322,7 +329,7 @@ These controls use the same correction-safe importer as
 `phyn.import_fixture_statistics`; they do not reset statistics, change existing
 IDs, create sensor-generated water statistics, or write to Phyn. Advanced
 start/end dates and dry runs remain available in **Developer Tools > Actions**.
-This development-branch addition is not included in the published beta 5.
+These controls and automatic chunking are included starting with beta 6.
 
 **The maximum API history depth is not established.** A bounded read-only probe
 on September 26, 2026 accepted 1, 7, 31, 90, 365, and 366-day requests on one
