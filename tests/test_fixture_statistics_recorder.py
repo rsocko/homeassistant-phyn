@@ -8,6 +8,8 @@ import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from pytest_homeassistant_custom_component.components.recorder.common import (
@@ -30,6 +32,7 @@ from custom_components.phyn.fixture_statistics import (
     fixture_statistic_id,
 )
 from custom_components.phyn import fixture_statistics as fixture_module
+from custom_components.phyn.devices.pp import PhynPlusDevice
 
 
 @pytest.fixture
@@ -62,6 +65,48 @@ async def _read_rows(hass, recorder, start, statistic_id):
         {"state", "sum"},
     )
     return result.get(statistic_id, [])
+
+
+async def test_device_button_backfill_reuses_correction_safe_recorder_import(hass, recorder_mock):
+    """Button jobs use real evidence/Recorder, retaining history on repeat."""
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    events = [{
+        "id": "button_event",
+        "close_edge_timestamp": int(start.timestamp() * 1000) + 1000,
+        "total_flow": 2.0,
+        "latest_suggested_fixtures_result": {
+            "suggested_fixtures": [{
+                "fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 1.0,
+            }]
+        },
+    }]
+    device = PhynPlusDevice(
+        SimpleNamespace(
+            hass=hass, api_client=SimpleNamespace(device=SimpleNamespace(
+                get_water_usage_events=AsyncMock(return_value=events)
+            ))
+        ), "home", "button_device", "PP1"
+    )
+    await device.history_backfill.async_set_days(365)
+    statistic_id = fixture_statistic_id(device.id, "Toilet")
+    await device.history_backfill.async_start()
+    await device.history_backfill._task
+    first = await _read_rows(hass, recorder_mock, start - timedelta(hours=1), statistic_id)
+    assert [row["sum"] for row in first] == [0, 2]
+    assert device.history_backfill.data["status"] == "completed"
+    await device.history_backfill.async_start()
+    await device.history_backfill._task
+    assert await _read_rows(hass, recorder_mock, start - timedelta(hours=1), statistic_id) == first
+    assert device.history_backfill.data["imported_rows"] == 0
+
+    events[0]["total_flow"] = 3.0
+    await device.history_backfill.async_start()
+    await device.history_backfill._task
+    corrected = await _read_rows(hass, recorder_mock, start - timedelta(hours=1), statistic_id)
+    assert [row["sum"] for row in corrected] == [0, 3]
+    assert device.history_backfill.data["corrections_detected"] == 1
+    assert device._fixture_stats_importer._pending is None
+    await device.async_shutdown()
 
 
 @pytest.mark.asyncio

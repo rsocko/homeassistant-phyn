@@ -29,7 +29,7 @@ import_fixture_statistics:
         text:
     days:
       name: Days
-      description: Relative lookback window when start/end are not provided
+      description: Days to request when start/end are not provided; 365 is a local limit, not a guarantee of available or complete cloud history
       required: false
       default: 1
       selector:
@@ -82,7 +82,7 @@ reload_fixture_statistics:
         text:
     days:
       name: Days
-      description: Relative lookback window when start/end are not provided
+      description: Days to request when start/end are not provided; 365 is a local limit, not a guarantee of available or complete cloud history
       required: false
       default: 7
       selector:

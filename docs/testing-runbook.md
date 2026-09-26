@@ -247,7 +247,10 @@ Missing events in a response are **never deletions**. Server result caps,
 pagination/completeness, revision ordering, boundary semantics and event-ID
 stability remain unknown. The services' `days` range of **1-365**, or explicit
 `start_datetime`/`end_datetime`, selects a request window; it does not guarantee
-complete returned history. Labels and API `fixture_id` categories are not proven
+complete returned history. The 365-day limit is local to the day selector;
+explicit date ranges have no equivalent cap. No maximum API retention was
+established: verified captures covered a completed seven-day window, and older
+adapted test fixtures are not retention evidence. Labels and API `fixture_id` categories are not proven
 identities for distinct physical fixtures in a household. Statistics series
 are label/category-based per device, not a household inventory.
 
@@ -257,6 +260,31 @@ sums. `force_reimport: true` replays the observations without clearing whole
 series; omission still preserves history. Use `dry_run: true` to preview a
 bounded request before writes. Preview does not write or recover a pending
 operation and reports an error when earlier work is pending.
+
+### Native backfill controls (unreleased development branch)
+
+The PP1/PP2 button, number, and diagnostic status use the same device importer.
+`phyn_history_backfill_<device_id>` stores only local control settings and job
+outcome, separately from the accepted-event evidence/journal. Status does not
+generate water statistics. No automatic backfill starts on setup, restore, or
+changing the number. The button snapshots an elapsed UTC range at press time.
+A run saved as running is restored as interrupted, without automatic retry.
+
+Offline regression coverage is in `tests/test_history_backfill.py`, with an
+additional real-Recorder button backfill case in
+`tests/test_fixture_statistics_recorder.py`. It covers native entity/device
+registration, day bounds and persistence, success/empty/failure/interruption,
+per-device isolation, duplicate presses, existing service/import locking,
+unload, and keeping the previous successful completion.
+
+For a user-run Dev check: choose a short range, press the device button, and
+observe running then completed/failed. Verify its range and counters, repeat
+the same observations without doubling consumption, change days without
+starting work, and reload to verify the selected days and outcome persist.
+The button timestamp is not completion evidence. Do not interpret zero results
+or a completed status as API completeness. No live retention probe is part of
+the offline suite; establishing a lower bound needs an approved, bounded set of
+older known-activity windows and repeated/split-window comparisons.
 
 Accepted evidence and checkpoints commit only after absolute Recorder rows and
 metadata have been read back and verified. An interrupted/pending import retains

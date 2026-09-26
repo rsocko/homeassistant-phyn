@@ -35,6 +35,12 @@
         }
     },
     "entity": {
+        "button": {
+            "history_backfill": { "name": "Backfill category history" }
+        },
+        "number": {
+            "history_backfill_days": { "name": "Backfill days" }
+        },
         "binary_sensor": {
             "alert_battery": {
                 "name": "Battery Alert"
@@ -79,6 +85,16 @@
             }
         },
         "sensor": {
+            "history_backfill_status": {
+                "name": "History backfill status",
+                "state": {
+                    "idle": "Idle",
+                    "running": "Running",
+                    "completed": "Completed",
+                    "failed": "Failed",
+                    "interrupted": "Interrupted"
+                }
+            },
             "air_temperature": {
                 "name": "Air Temperature"
             },

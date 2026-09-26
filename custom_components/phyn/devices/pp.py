@@ -8,9 +8,11 @@ from asyncio import CancelledError, Lock, Task, timeout
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
+from ..backfill import PhynHistoryBackfill
 from ..fixture_statistics import PhynFixtureStatisticsImporter
 from ..logbook_helpers import async_add_logbook_entry
 from ..entities.base import (
@@ -87,6 +89,7 @@ class PhynPlusDevice(PhynDevice):
         self._fixture_import_lock: Lock = Lock()
         self._fixture_task: Task[None] | None = None
         self._fixture_stopping = False
+        self.history_backfill = PhynHistoryBackfill(self)
         self.configured_fixture_categories: set[str] = set()
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
@@ -140,7 +143,7 @@ class PhynPlusDevice(PhynDevice):
                 if (self._update_count % 60 == 0):
                     await self._update_firmware_information()
                 
-                if not self._fixture_stopping and self._update_count % 15 == 0 and (
+                if not self._fixture_stopping and not self.history_backfill.running and self._update_count % 15 == 0 and (
                     self._fixture_task is None or self._fixture_task.done()
                 ):
                     self._fixture_task = self._coordinator.hass.async_create_background_task(
@@ -271,12 +274,22 @@ class PhynPlusDevice(PhynDevice):
     ) -> dict[str, int]:
         """Restore state and serialize manual and recurring fixture imports."""
         async with self._fixture_import_lock:
-            if self._fixture_stopping:
-                raise HomeAssistantError("Phyn fixture imports are stopping")
-            await self._fixture_stats_importer.async_initialize()
-            return await self._async_import_fixture_statistics(
-                from_datetime, to_datetime, force_reimport, dry_run
-            )
+            async_dispatcher_send(self._coordinator.hass, self.history_backfill.signal)
+            try:
+                if self._fixture_stopping:
+                    raise HomeAssistantError("Phyn fixture imports are stopping")
+                await self._fixture_stats_importer.async_initialize()
+                return await self._async_import_fixture_statistics(
+                    from_datetime, to_datetime, force_reimport, dry_run
+                )
+            finally:
+                self._coordinator.hass.loop.call_soon(
+                    async_dispatcher_send, self._coordinator.hass, self.history_backfill.signal
+                )
+
+    @property
+    def fixture_import_running(self) -> bool:
+        return self._fixture_import_lock.locked()
 
     async def _async_import_fixture_statistics(
         self,
@@ -379,6 +392,7 @@ class PhynPlusDevice(PhynDevice):
     async def async_shutdown(self) -> None:
         """Stop history work without discarding any persisted pending import."""
         self._fixture_stopping = True
+        await self.history_backfill.async_shutdown()
         if self._fixture_task is not None:
             self._fixture_task.cancel()
             try:

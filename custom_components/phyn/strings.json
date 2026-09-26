@@ -59,6 +59,12 @@
     }
   },
   "entity": {
+    "button": {
+      "history_backfill": { "name": "Backfill category history" }
+    },
+    "number": {
+      "history_backfill_days": { "name": "Backfill days" }
+    },
     "binary_sensor": {
       "alert_battery": { "name": "Battery Alert" },
       "alert_freeze_warn": { "name": "Freeze Warning Alert" },
@@ -74,6 +80,16 @@
       "leak_test_leak": { "name": "Leak Detected" }
     },
     "sensor": {
+      "history_backfill_status": {
+        "name": "History backfill status",
+        "state": {
+          "idle": "Idle",
+          "running": "Running",
+          "completed": "Completed",
+          "failed": "Failed",
+          "interrupted": "Interrupted"
+        }
+      },
       "daily_consumption": { "name": "Daily water usage" },
       "consumption": { "name": "Total Water Usage" },
       "current_flow_rate": { "name": "Current water flow rate" },

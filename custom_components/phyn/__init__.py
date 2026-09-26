@@ -26,7 +26,10 @@ from .energy_coverage import PhynEnergyCoverage
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.EVENT, Platform.SENSOR, Platform.SWITCH, Platform.UPDATE, Platform.VALVE]
+PLATFORMS = [
+    Platform.BINARY_SENSOR, Platform.BUTTON, Platform.EVENT, Platform.NUMBER,
+    Platform.SENSOR, Platform.SWITCH, Platform.UPDATE, Platform.VALVE,
+]
 
 # aiophyn bounds disconnect_and_wait() itself (10s); this is a backstop only.
 MQTT_DISCONNECT_TIMEOUT = 15

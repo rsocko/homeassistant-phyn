@@ -10,6 +10,7 @@ from homeassistant.helpers.target import async_extract_referenced_entity_ids, Ta
 
 from .const import CLIENT, DOMAIN, LOGGER
 from .logbook_helpers import async_add_logbook_entry
+from .backfill import BACKFILL_MAX_DAYS
 
 
 def _resolve_device_id_from_entity(hass: HomeAssistant, entity_id: str) -> str:
@@ -310,7 +311,7 @@ async def phyn_leak_test_service_setup(hass: HomeAssistant):
                 vol.Optional("entity_id"): cv.entity_id,
                 vol.Optional("device_id"): cv.string,
                 vol.Optional("days"): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=365)
+                    vol.Coerce(int), vol.Range(min=1, max=BACKFILL_MAX_DAYS)
                 ),
                 vol.Optional("start_datetime"): cv.datetime,
                 vol.Optional("end_datetime"): cv.datetime,
@@ -330,7 +331,7 @@ async def phyn_leak_test_service_setup(hass: HomeAssistant):
                 vol.Optional("entity_id"): cv.entity_id,
                 vol.Optional("device_id"): cv.string,
                 vol.Optional("days", default=7): vol.All(
-                    vol.Coerce(int), vol.Range(min=1, max=365)
+                    vol.Coerce(int), vol.Range(min=1, max=BACKFILL_MAX_DAYS)
                 ),
                 vol.Optional("start_datetime"): cv.datetime,
                 vol.Optional("end_datetime"): cv.datetime,

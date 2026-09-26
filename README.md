@@ -250,11 +250,58 @@ expiry. Corrections use the last locally observed contribution per device-scoped
 event ID, not a proven newest server revision. Omitted events are not deleted.
 `force_reimport: true` and reload reconcile observations without clearing whole
 series; use `dry_run: true` with an explicit timeframe to preview writes.
-The 1-365 day/date request window is not a completeness guarantee. Labels describe
+The 1-365 day selector is a local guard, not a proven API retention limit.
+Explicit date ranges are not capped at 365 days. Neither guarantees complete
+returned history. Labels describe
 fixture categories, not proven individual household fixtures. Unsupported
 developer state pauses fixture statistics only, with a persistent notice; normal
 sensors and controls continue. See the runbook for readback/recovery limits;
 there is no automatic migration or history clear.
+
+### Device history backfill controls (development branch)
+
+Each selected Phyn Plus (PP1/PP2) monitor offers native controls on its device
+page, under Configuration:
+
+- **Backfill days**: days to request, from 1 to 365, initially 7. This local
+  setting survives reloads/restarts; changing it does not start an import.
+- **Backfill category history**: requests that monitor's category events for
+  the selected number of elapsed days ending at the press time, in UTC.
+  The job runs in the background without blocking normal sensor refreshes.
+- **History backfill status** (Diagnostic): idle, running, completed, failed,
+  or interrupted. Attributes show the requested range, timestamps, fetched
+  events, imported rows, detected corrections, and last successful completion.
+
+The button's own timestamp means **pressed**, not **success**. Check the status
+sensor instead. Completed means the returned observations were processed and
+any required Recorder writes verified, **not** that Phyn returned every event.
+An empty response may complete with zero events; it does not prove no usage.
+The status tracks button-requested backfills only, not recurring imports or
+Developer Tools actions. Changing days during a run affects the next press.
+
+Duplicate presses are rejected while a device import is active. All imports
+share the existing per-monitor lock. Different monitors have separate settings
+and outcomes. Cloud-history controls do not require the physical monitor to be
+online. Failure details are logged; unload cancels the button's job, and an
+unconfirmed run is shown as interrupted after restart, never resumed
+automatically. The last successful completion survives failures and restarts.
+Interrupted/failed work may have written rows or a recovery journal; a later
+import uses the existing reconciliation/recovery path rather than clearing data.
+
+These controls use the same correction-safe importer as
+`phyn.import_fixture_statistics`; they do not reset statistics, change existing
+IDs, create sensor-generated water statistics, or write to Phyn. Advanced
+start/end dates and dry runs remain available in **Developer Tools > Actions**.
+This development-branch addition is not included in the published beta 5.
+
+**API history availability is not established.** Existing verified captures
+cover a completed seven-day window, not a retention-boundary investigation.
+The SDK makes one logical history request without pagination or a proven
+completeness/result-cap guarantee. Start with a short range; a longer request
+does not establish that all history in that range was returned. A future
+read-only investigation should compare small older windows with known activity,
+repeat requests, and compare combined vs separate windows within an agreed
+request budget. An empty old window alone is not evidence of a retention limit.
 
 ### Optional configured fixture counts
 
