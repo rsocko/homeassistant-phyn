@@ -1,1 +1,2 @@
-from .pp import PhynDailyUsageSensor, PhynCurrentFlowRateSensor, PhynTemperatureSensor, PhynPressureSensor
+from ..entities.base import PhynDailyUsageSensor, PhynTemperatureSensor, PhynPressureSensor
+from .pp import PhynCurrentFlowRateSensor

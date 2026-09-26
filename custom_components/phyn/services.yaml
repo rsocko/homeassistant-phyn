@@ -1,18 +1,111 @@
 leak_test:
-  name: Start a leak test
-  description: Starts a leak test for a phyn smart valve
   fields:
     entity_id:
-      name: Valve
-      description: Valve to run leak test from
       required: true
       selector:
         entity:
           domain: valve
     extended:
-      name: Extended Test
-      description: Extended leak test
       required: true
+      default: false
+      selector:
+        boolean:
+
+import_fixture_statistics:
+  name: Import fixture statistics
+  description: Import fixture water usage events in sequential seven-day chunks with a one-millisecond internal overlap. Each chunk is verified before continuing. Failures preserve earlier chunks and report the remaining range; no automatic retry. Dry runs preview combined observations without writes. Cloud completeness is not guaranteed.
+  fields:
+    entity_id:
+      name: Entity
+      description: Any entity for the target Phyn device (optional)
+      required: false
+      selector:
+        entity: {}
+    device_id:
+      name: Device ID
+      description: Target Phyn device id (optional, used when entity_id is not set)
+      required: false
+      selector:
+        text:
+    days:
+      name: Days
+      description: Days to request when start/end are not provided; 365 is an arbitrarily chosen local guard, not a discovered SDK/API maximum or a guarantee of available or complete history
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
+    start_datetime:
+      name: Start datetime
+      description: Optional explicit start time (must be paired with end_datetime)
+      required: false
+      selector:
+        datetime:
+    end_datetime:
+      name: End datetime
+      description: Optional explicit end time (must be paired with start_datetime)
+      required: false
+      selector:
+        datetime:
+    force_reimport:
+      name: Force reimport
+      description: Reconcile observed events without clearing older history; requires an explicit timeframe
+      required: false
+      default: false
+      selector:
+        boolean:
+    dry_run:
+      name: Dry run
+      description: Preview observed-event reconciliation without changing statistics or saved evidence
+      required: false
+      default: false
+      selector:
+        boolean:
+
+reload_fixture_statistics:
+  name: Reload corrected fixture statistics
+  description: Reconcile last-observed corrections in sequential seven-day chunks with a one-millisecond internal overlap, preserving unrelated history. Failures retain earlier verified chunks and report the remaining range; no automatic retry. Dry runs preview combined observations without writes. Cloud completeness is not guaranteed.
+  fields:
+    entity_id:
+      name: Entity
+      description: Any entity for the target Phyn device (optional)
+      required: false
+      selector:
+        entity: {}
+    device_id:
+      name: Device ID
+      description: Target Phyn device id (optional, used when entity_id is not set)
+      required: false
+      selector:
+        text:
+    days:
+      name: Days
+      description: Days to request when start/end are not provided; 365 is an arbitrarily chosen local guard, not a discovered SDK/API maximum or a guarantee of available or complete history
+      required: false
+      default: 7
+      selector:
+        number:
+          min: 1
+          max: 365
+          mode: box
+    start_datetime:
+      name: Start datetime
+      description: Optional explicit start time (must be paired with end_datetime)
+      required: false
+      selector:
+        datetime:
+    end_datetime:
+      name: End datetime
+      description: Optional explicit end time (must be paired with start_datetime)
+      required: false
+      selector:
+        datetime:
+    dry_run:
+      name: Dry run
+      description: Preview rows and observed corrections without changing statistics
+      required: false
       default: false
       selector:
         boolean:

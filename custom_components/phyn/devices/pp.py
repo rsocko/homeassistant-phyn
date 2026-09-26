@@ -1,44 +1,41 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
-from asyncio import Lock, timeout
+from asyncio import CancelledError, Lock, Task, timeout
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
-from homeassistant.components.valve import (
-    ValveDeviceClass,
-    ValveEntity,
-    ValveEntityFeature
-)
-from homeassistant.const import (
-    UnitOfPressure,
-    UnitOfTemperature,
-    UnitOfVolume,
-    UnitOfVolumeFlowRate,
-)
-
-from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 import homeassistant.util.dt as dt_util
 
 from ..const import LOGGER
+from ..backfill import PhynHistoryBackfill
+from ..fixture_statistics import PhynFixtureStatisticsImporter
+from ..history_import import ImportProgressCallback, async_import_history
+from ..logbook_helpers import async_add_logbook_entry
 from ..entities.base import (
-    PhynEntity,
+    PhynAlertEvent,
+    PhynAlertSensor,
     PhynDailyUsageSensor,
     PhynFirmwareUpdateAvailableSensor,
-    PhynFirwmwareUpdateEntity,
+    PhynFirmwareUpdateEntity,
     PhynPressureSensor,
     PhynTemperatureSensor,
-    PhynSwitchEntity
+)
+from ..entities.pp import (
+    PhynAutoShutoffModeSwitch,
+    PhynAwayModeSwitch,
+    PhynConsumptionSensor,
+    PhynCurrentFlowRateSensor,
+    PhynFlowState,
+    PhynLeakTestLeakDetected,
+    PhynLeakTestSensor,
+    PhynLeakTestWarning,
+    PhynScheduledLeakTestEnabledSwitch,
+    PhynValve,
 )
 from .base import PhynDevice
 
@@ -48,25 +45,36 @@ import time
 if TYPE_CHECKING:
     from ..update_coordinator import PhynDataUpdateCoordinator
 
-WATER_ICON = "mdi:water"
-GAUGE_ICON = "mdi:gauge"
-NAME_DAILY_USAGE = "Daily water usage"
-NAME_FLOW_RATE = "Current water flow rate"
 NAME_WATER_TEMPERATURE = "Current water temperature"
 NAME_WATER_PRESSURE = "Current water pressure"
 
 class PhynPlusDevice(PhynDevice):
     """Phyn device object."""
 
+    ALERT_EVENT_TYPES: list[str] = [
+        "battery",
+        "freeze_warn",
+        "high_pressure",
+        "leak",
+        "offline_leak",
+        "periodic_leak",
+        "pinhole_leak",
+        "temperature",
+    ]
+
     def __init__(
         self,
         coordinator: PhynDataUpdateCoordinator,
         home_id: str,
         device_id: str,
-        product_code: str
+        product_code: str,
+        home_name: str = "",
+        *,
+        statistics_home_name: str = "",
+        statistics_display_context: str | None = None,
     ) -> None:
         """Initialize the device."""
-        super().__init__(coordinator, home_id, device_id, product_code)
+        super().__init__(coordinator, home_id, device_id, product_code, home_name)
         self._device_state: dict[str, Any] = {
             "flow_state": {
                 "v": 0.0,
@@ -74,14 +82,33 @@ class PhynPlusDevice(PhynDevice):
             }
         }
         self._auto_shutoff: dict[str, Any] = {}
-        self._away_mode: dict[str, Any] = {}
         self._water_usage: dict[str, Any] = {}
         self._last_known_valve_state: bool = True
         self._latest_health_test: dict[str, Any] | None = None
         self._rt_device_state: dict[str, Any] = {}
         self._state_lock: Lock = Lock()
+        self._fixture_import_lock: Lock = Lock()
+        self._fixture_task: Task[None] | None = None
+        self._fixture_stopping = False
+        self.history_backfill = PhynHistoryBackfill(self)
+        self.configured_fixture_categories: set[str] = set()
+        self._fixture_stats_importer = PhynFixtureStatisticsImporter(
+            coordinator.hass,
+            self._phyn_device_id,
+            home_name=statistics_home_name or home_name,
+            display_context=statistics_display_context,
+        )
 
         self.entities = [
+            PhynAlertEvent(self),
+            PhynAlertSensor(self, "alert_battery", "Battery Alert", "alert_battery"),
+            PhynAlertSensor(self, "alert_freeze_warn", "Freeze Warning Alert", "alert_freeze_warn"),
+            PhynAlertSensor(self, "alert_high_pressure", "High Pressure Alert", "alert_high_pressure"),
+            PhynAlertSensor(self, "alert_leak", "Leak Alert", "alert_leak"),
+            PhynAlertSensor(self, "alert_offline_leak", "Offline Leak Shutoff Alert", "alert_offline_leak"),
+            PhynAlertSensor(self, "alert_periodic_leak", "Recurring Flow Alert", "alert_periodic_leak"),
+            PhynAlertSensor(self, "alert_pinhole_leak", "Pinhole Leak Alert", "alert_pinhole_leak"),
+            PhynAlertSensor(self, "alert_temperature", "Temperature Alert", "alert_temperature"),
             PhynAutoShutoffModeSwitch(self),
             PhynAwayModeSwitch(self),
             PhynFlowState(self),
@@ -89,7 +116,7 @@ class PhynPlusDevice(PhynDevice):
             PhynCurrentFlowRateSensor(self),
             PhynConsumptionSensor(self),
             PhynFirmwareUpdateAvailableSensor(self),
-            PhynFirwmwareUpdateEntity(self),
+            PhynFirmwareUpdateEntity(self),
             PhynLeakTestLeakDetected(self),
             PhynLeakTestSensor(self),
             PhynLeakTestWarning(self),
@@ -104,10 +131,11 @@ class PhynPlusDevice(PhynDevice):
         try:
             async with timeout(20):
                 await self._update_device_state()
+                await self._update_alerts()
+                await self._update_alert_events()
                 await self._update_autoshutoff()
                 await self._update_device_preferences()
                 await self._update_consumption_data()
-
                 #Update every 10 minutes
                 if self._update_count % 10 == 0:
                     await self._update_device_health_tests()
@@ -116,16 +144,31 @@ class PhynPlusDevice(PhynDevice):
                 if (self._update_count % 60 == 0):
                     await self._update_firmware_information()
                 
+                if (
+                    not self._fixture_stopping
+                    and not self.history_backfill.running
+                    and self._update_count % 15 == 0
+                    and (self._fixture_task is None or self._fixture_task.done())
+                ):
+                    self._fixture_task = self._coordinator.hass.async_create_background_task(
+                        self._update_fixture_statistics(), f"Phyn fixture import {self.id}"
+                    )
                 self._update_count += 1
         except (RequestError) as error:
             raise UpdateFailed(error) from error
 
     @property
     def consumption(self) -> float | None:
-        """Return the current consumption for today in gallons."""
-        if "consumption" not in self._rt_device_state:
+        """Return the lifetime meter reading in gallons."""
+        value = self._device_state.get("consumption")
+        # REST get_state() stores {"v": ..., "ts": ...}; on_device_update stores
+        # a floored scalar. Accept both so a realtime message that lacks
+        # "consumption" cannot drop the sensor to unknown.
+        if isinstance(value, dict):
+            value = value.get("v")
+        if value is None:
             return None
-        return self._device_state.get("consumption")
+        return math.floor(value * 100) / 100
 
     @property
     def consumption_today(self) -> float | None:
@@ -172,6 +215,38 @@ class PhynPlusDevice(PhynDevice):
 
 
     @property
+    def alert_battery(self) -> bool:
+        return self.has_active_alert("battery")
+
+    @property
+    def alert_freeze_warn(self) -> bool:
+        return self.has_active_alert("freeze_warn")
+
+    @property
+    def alert_high_pressure(self) -> bool:
+        return self.has_active_alert("high_pressure")
+
+    @property
+    def alert_leak(self) -> bool:
+        return self.has_active_alert("leak")
+
+    @property
+    def alert_offline_leak(self) -> bool:
+        return self.has_active_alert("offline_leak")
+
+    @property
+    def alert_periodic_leak(self) -> bool:
+        return self.has_active_alert("periodic_leak")
+
+    @property
+    def alert_pinhole_leak(self) -> bool:
+        return self.has_active_alert("pinhole_leak")
+
+    @property
+    def alert_temperature(self) -> bool:
+        return self.has_active_alert("temperature")
+
+    @property
     def valve_open(self) -> bool:
         """Return the valve state for the device."""
         if self.valve_changing:
@@ -189,9 +264,152 @@ class PhynPlusDevice(PhynDevice):
         """Setup a new device coordinator"""
         LOGGER.debug("Setting up coordinator")
 
+        await self._fixture_stats_importer.async_initialize()
         await self._coordinator.api_client.mqtt.add_event_handler("update", self.on_device_update)
         await self._coordinator.api_client.mqtt.subscribe(f"prd/app_subscriptions/{self._phyn_device_id}")
         return self._device_state["sov_status"]["v"]
+
+    async def async_import_fixture_statistics(
+        self,
+        from_datetime: datetime | None = None,
+        to_datetime: datetime | None = None,
+        force_reimport: bool = False,
+        dry_run: bool = False,
+        *,
+        progress_callback: ImportProgressCallback | None = None,
+    ) -> dict[str, int]:
+        """Restore state and serialize manual and recurring fixture imports."""
+        async with self._fixture_import_lock:
+            async_dispatcher_send(self._coordinator.hass, self.history_backfill.signal)
+            try:
+                if self._fixture_stopping:
+                    raise HomeAssistantError("Phyn fixture imports are stopping")
+                await self._fixture_stats_importer.async_initialize()
+                return await self._async_import_fixture_statistics(
+                    from_datetime, to_datetime, force_reimport, dry_run, progress_callback
+                )
+            finally:
+                self._coordinator.hass.loop.call_soon(
+                    async_dispatcher_send, self._coordinator.hass, self.history_backfill.signal
+                )
+
+    @property
+    def fixture_import_running(self) -> bool:
+        return self._fixture_import_lock.locked()
+
+    async def _async_import_fixture_statistics(
+        self,
+        from_datetime: datetime | None,
+        to_datetime: datetime | None,
+        force_reimport: bool,
+        dry_run: bool,
+        progress_callback: ImportProgressCallback | None = None,
+    ) -> dict[str, int]:
+        """Import fixture events for a given time window.
+
+        If ``from_datetime`` is omitted, importer checkpoint state determines
+        the next fetch start.
+        """
+        now_utc = dt_util.now(timezone.utc)
+        to_dt = to_datetime or now_utc
+        if to_dt.tzinfo is None:
+            to_dt = to_dt.replace(tzinfo=timezone.utc)
+
+        from_dt = from_datetime or self._fixture_stats_importer.next_fetch_start(to_dt)
+        if from_dt.tzinfo is None:
+            from_dt = from_dt.replace(tzinfo=timezone.utc)
+
+        if from_dt >= to_dt:
+            raise HomeAssistantError("Fixture import start must be before its end")
+
+        if not dry_run and self.configured_fixture_categories:
+            await self._fixture_stats_importer.async_register_categories(
+                self.configured_fixture_categories
+            )
+
+        async def fetch(*, from_ts: int, to_ts: int) -> list[dict[str, Any]]:
+            if self._fixture_stopping:
+                raise HomeAssistantError("Phyn fixture imports are stopping")
+            return await self._coordinator.api_client.device.get_water_usage_events(
+                self._phyn_device_id, from_ts=from_ts, to_ts=to_ts,
+            )
+
+        return await async_import_history(
+            self._coordinator.hass,
+            self._fixture_stats_importer,
+            fetch,
+            int(from_dt.timestamp() * 1000), int(to_dt.timestamp() * 1000),
+            force_reimport=force_reimport, dry_run=dry_run,
+            progress_callback=progress_callback,
+        )
+
+    async def _update_fixture_statistics(self) -> None:
+        """Fetch fixture usage events and import into HA long-term statistics."""
+        try:
+            result = await self.async_import_fixture_statistics()
+
+            imported = int(result.get("imported_rows", 0))
+            events_fetched = int(result.get("events_fetched", 0))
+            newer_events = int(result.get("events_newer_than_checkpoint", 0))
+            checkpoint_before = int(result.get("checkpoint_before_ms", 0))
+            checkpoint_after = int(result.get("checkpoint_after_ms", 0))
+            corrections_detected = int(result.get("corrections_detected", 0))
+
+            if imported > 0:
+                LOGGER.info(
+                    "Recurring fixture import for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s, corrections=%s",
+                    self._phyn_device_id,
+                    imported,
+                    events_fetched,
+                    newer_events,
+                    checkpoint_before,
+                    checkpoint_after,
+                    corrections_detected,
+                )
+            else:
+                LOGGER.debug(
+                    "Recurring fixture import (no new rows) for device %s: rows=%s, events=%s, newer=%s, checkpoint_before=%s, checkpoint_after=%s, corrections=%s",
+                    self._phyn_device_id,
+                    imported,
+                    events_fetched,
+                    newer_events,
+                    checkpoint_before,
+                    checkpoint_after,
+                    corrections_detected,
+                )
+
+            if imported > 0:
+                await async_add_logbook_entry(
+                    self._coordinator.hass,
+                    (
+                        f"Recurring fixture import for {self._phyn_device_id}: "
+                        f"rows={imported}, events={events_fetched}, newer={newer_events}, corrections={corrections_detected}"
+                    ),
+                )
+        except Exception as err:
+            LOGGER.exception(
+                "Recurring fixture import failed for device %s: %s",
+                self._phyn_device_id,
+                err,
+            )
+            await async_add_logbook_entry(
+                self._coordinator.hass,
+                f"Recurring fixture import failed for {self._phyn_device_id}: {err}",
+            )
+
+    async def async_shutdown(self) -> None:
+        """Stop history work without discarding any persisted pending import."""
+        self._fixture_stopping = True
+        await self.history_backfill.async_shutdown()
+        if self._fixture_task is not None:
+            self._fixture_task.cancel()
+            try:
+                await self._fixture_task
+            except CancelledError:
+                pass
+            self._fixture_task = None
+        async with self._fixture_import_lock:
+            pass
     
     @property
     def autoshutoff_enabled(self) -> bool | None:
@@ -212,10 +430,14 @@ class PhynPlusDevice(PhynDevice):
             return None
         return self._device_preferences["leak_sensitivity_away_mode"]["value"] == "true"
 
-    async def set_device_preference(self, name: str, val: bool) -> None:
-        """Set Device Preference"""
+    async def set_device_preference(self, name: str, val: str) -> None:
+        """Set Device Preference.
+
+        :param name: Preference name (leak_sensitivity_away_mode or scheduler_enable)
+        :param val: Preference value as string ("true" or "false")
+        """
         if name not in ["leak_sensitivity_away_mode", "scheduler_enable"]:
-            LOGGER.debug("Tried setting preference for %s but not avialable", name)
+            LOGGER.debug("Tried setting preference for %s but not available", name)
             return None
         if val not in ["true", "false"]:
             return None
@@ -259,12 +481,6 @@ class PhynPlusDevice(PhynDevice):
         data = await self._coordinator.api_client.device.get_autoshuftoff_status(self._phyn_device_id)
         LOGGER.debug("Autoshutoff info: %s" % data)
         self._auto_shutoff.update(data)
-    
-    async def _update_away_mode(self, *_) -> None:
-        """Update the away mode data from the API"""
-        self._away_mode = await self._coordinator.api_client.device.get_away_mode(
-            self._phyn_device_id
-        )
 
     async def _update_device_preferences(self, *_) -> None:
         """Update the device preferences from the API"""
@@ -345,239 +561,3 @@ class PhynPlusDevice(PhynDevice):
                 if getattr(entity, "hass", None) is None:
                     continue
                 entity.async_write_ha_state()
-
-class PhynAutoShutoffModeSwitch(PhynSwitchEntity):
-    """Switch class for the Phyn Away Mode."""
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the Phyn Away Mode switch."""
-        super().__init__("autoshutoff_enabled", "Autoshutoff Enabled", device)
-        self._preference_name: str | None = "autoshutoff_enabled"
-
-    @property
-    def _state(self) -> bool | None:
-        return self._device.autoshutoff_enabled
-
-    @property
-    def icon(self) -> str:
-        """Return the icon to use for the away mode."""
-        if self.is_on:
-            return "mdi:bag-suitcase"
-        return "mdi:home-circle"
-    
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the preference."""
-        await self._device.set_autoshutoff_enabled(True)
-        self.async_write_ha_state()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the preference."""
-        await self._device.set_autoshutoff_enabled(False)
-        self.async_write_ha_state()
-
-class PhynAwayModeSwitch(PhynSwitchEntity):
-    """Switch class for the Phyn Away Mode."""
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the Phyn Away Mode switch."""
-        super().__init__("away_mode", "Away Mode", device)
-        self._preference_name: str | None = "leak_sensitivity_away_mode"
-
-    @property
-    def _state(self) -> bool | None:
-        return self._device.away_mode
-
-    @property
-    def icon(self) -> str:
-        """Return the icon to use for the away mode."""
-        if self.is_on:
-            return "mdi:bag-suitcase"
-        return "mdi:home-circle"
-
-class PhynFlowState(PhynEntity, SensorEntity):
-    """Flow State for Water Sensor"""
-    _attr_icon = WATER_ICON
-    #_attr_native_unit_of_measurement = UnitOfVolume.GALLONS
-    #_attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
-    #_attr_device_class = SensorDeviceClass.WATER
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the daily water usage sensor."""
-        super().__init__("water_flow_state", "Water Flowing", device)
-        self._state: str | None = None
-
-    @property
-    def native_value(self) -> str | None:
-        if "flow_state" in self._device._rt_device_state:
-            return self._device._rt_device_state['flow_state']['v']
-        return None
-
-class PhynLeakTestSensor(PhynEntity, BinarySensorEntity):
-    """Leak Test Sensor"""
-    _attr_device_class = BinarySensorDeviceClass.RUNNING
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the leak test sensor."""
-        super().__init__("leak_test_running", "Leak Test Running", device)
-
-    @property
-    def is_on(self) -> bool:
-        return self._device.leak_test_running
-
-class PhynLeakTestWarning(PhynEntity, BinarySensorEntity):
-    """Leak Test Sensor"""
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the leak test warning sensor."""
-        super().__init__("leak_test_warning", "Leak Test Warning", device)
-
-    @property
-    def is_on(self) -> bool | None:
-        if self._device._latest_health_test is None:
-            return None
-        return self._device._latest_health_test.get('is_warn', False)
-
-class PhynLeakTestLeakDetected(PhynEntity, BinarySensorEntity):
-    """Leak Test Sensor"""
-    _attr_device_class = BinarySensorDeviceClass.PROBLEM
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the leak test leak sensor."""
-        super().__init__("leak_test_leak", "Leak Detected", device)
-
-    @property
-    def is_on(self) -> bool | None:
-        if self._device._latest_health_test is None:
-            return None
-        return self._device._latest_health_test.get('is_leak', False)
-
-class PhynScheduledLeakTestEnabledSwitch(PhynSwitchEntity):
-    """Switch class for the Phyn Away Mode."""
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the Phyn Away Mode switch."""
-        super().__init__("scheduled_leak_test_enabled", "Scheduled Leak Test Enabled", device)
-        self._preference_name: str | None = "scheduler_enable"
-    
-    @property
-    def _state(self) -> bool | None:
-        return self._device.scheduled_leak_test_enabled
-
-    @property
-    def icon(self) -> str:
-        """Return the icon to use for the away mode."""
-        if self.is_on:
-            return "mdi:bag-suitcase"
-        return "mdi:home-circle"
-
-class PhynConsumptionSensor(PhynEntity, SensorEntity):
-    """Monitors the amount of water usage."""
-
-    _attr_icon = WATER_ICON
-    _attr_native_unit_of_measurement = UnitOfVolume.GALLONS
-    _attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
-    _attr_device_class = SensorDeviceClass.WATER
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the daily water usage sensor."""
-        super().__init__("consumption", "Total Water Usage", device)
-        self._state: float | None = None
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current daily usage."""
-        if self._device.consumption is None:
-            return None
-        return self._device.consumption
-
-
-class PhynCurrentFlowRateSensor(PhynEntity, SensorEntity):
-    """Monitors the current water flow rate."""
-
-    _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
-    _attr_translation_key = "current_flow_rate"
-    _attr_device_class = SensorDeviceClass.VOLUME_FLOW_RATE
-    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.GALLONS_PER_MINUTE
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the flow rate sensor."""
-        super().__init__("current_flow_rate", NAME_FLOW_RATE, device)
-        self._state: float | None = None
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current flow rate."""
-        if self._device.current_flow_rate is None:
-            return None
-        rate = round(self._device.current_flow_rate, 1)
-        return 0 if rate == 0 else rate
-
-class PhynValve(PhynEntity, ValveEntity):
-    """ValveEntity for the Phyn valve."""
-
-    _device: PhynPlusDevice
-
-    def __init__(self, device: PhynPlusDevice) -> None:
-        """Initialize the Phyn Valve."""
-        super().__init__("shutoff_valve", "Shutoff valve", device)
-        self._attr_supported_features = ValveEntityFeature(ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE)
-        self._attr_device_class = ValveDeviceClass.WATER
-        self._attr_reports_position = False
-        self._last_known_state: bool = False
-    
-    async def async_open_valve(self) -> None:
-        """Open the valve."""
-        await self._device.coordinator.api_client.device.open_valve(self._device.id)
-
-    def open_valve(self) -> None:
-        """Open the valve."""
-        raise NotImplementedError()
-    
-    async def async_close_valve(self) -> None:
-        """Close the valve."""
-        await self._device.coordinator.api_client.device.close_valve(self._device.id)
-
-    def close_valve(self) -> None:
-        """Close valve."""
-        raise NotImplementedError()
-    
-    @property
-    def _attr_is_closed(self) -> bool | None:
-        """ Is the valve closed """
-        if self._device.valve_open is None:
-            return None
-        self._last_known_state = self._device.valve_open
-        return not self._device.valve_open
-    
-    @property
-    def _attr_is_opening(self) -> bool:
-        """ Is the valve opening """
-        if self._device.valve_changing and self._device._last_known_valve_state is False:
-            return True
-        return False
-
-    @property
-    def _attr_is_closing(self) -> bool:
-        """ Is the valve closing """
-        if self._device.valve_changing and self._device._last_known_valve_state is True:
-            return True
-        return False

@@ -1,14 +1,30 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Device is already configured"
+            "already_configured": "Device is already configured",
+            "reconfigure_successful": "Phyn was reconfigured successfully."
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "no_devices_selected": "At least one device must be selected.",
             "unknown": "Unexpected error"
         },
         "step": {
+            "device": {
+                "description": "Choose which devices to monitor in Home Assistant. At least one device must be selected.",
+                "title": "Select Devices"
+            },
+            "reauth_confirm": {
+                "data": {
+                    "password": "Password",
+                    "username": "Username"
+                }
+            },
+            "reconfigure": {
+                "description": "Update which devices are monitored in Home Assistant.",
+                "title": "Select Devices"
+            },
             "user": {
                 "data": {
                     "host": "Host",
@@ -16,6 +32,173 @@
                     "username": "Username"
                 }
             }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "alert_battery": {
+                "name": "Battery Alert"
+            },
+            "alert_freeze_warn": {
+                "name": "Freeze Warning Alert"
+            },
+            "alert_high_pressure": {
+                "name": "High Pressure Alert"
+            },
+            "alert_leak": {
+                "name": "Leak Alert"
+            },
+            "alert_offline_leak": {
+                "name": "Offline Leak Shutoff Alert"
+            },
+            "alert_periodic_leak": {
+                "name": "Recurring Flow Alert"
+            },
+            "alert_pinhole_leak": {
+                "name": "Pinhole Leak Alert"
+            },
+            "alert_temperature": {
+                "name": "Temperature Alert"
+            },
+            "firmware_update_available": {
+                "name": "Firmware Update Available"
+            },
+            "leak_test_leak": {
+                "name": "Leak Detected"
+            },
+            "leak_test_running": {
+                "name": "Leak Test Running"
+            },
+            "leak_test_warning": {
+                "name": "Leak Test Warning"
+            }
+        },
+        "button": {
+            "history_backfill": {
+                "name": "Backfill category history"
+            }
+        },
+        "event": {
+            "alert_event": {
+                "name": "Alert"
+            }
+        },
+        "number": {
+            "history_backfill_days": {
+                "name": "Backfill days"
+            }
+        },
+        "sensor": {
+            "air_temperature": {
+                "name": "Air Temperature"
+            },
+            "battery": {
+                "name": "Battery"
+            },
+            "consumption": {
+                "name": "Total Water Usage"
+            },
+            "current_flow_rate": {
+                "name": "Current water flow rate"
+            },
+            "daily_consumption": {
+                "name": "Daily water usage"
+            },
+            "history_backfill_status": {
+                "name": "History backfill status",
+                "state": {
+                    "completed": "Completed",
+                    "failed": "Failed",
+                    "idle": "Idle",
+                    "interrupted": "Interrupted",
+                    "running": "Running"
+                }
+            },
+            "humidity": {
+                "name": "Humidity"
+            },
+            "pressure": {
+                "name": "Current water pressure"
+            },
+            "pressure1": {
+                "name": "Average hot water pressure"
+            },
+            "pressure2": {
+                "name": "Average cold water pressure"
+            },
+            "temperature": {
+                "name": "Current water temperature"
+            },
+            "temperature1": {
+                "name": "Average hot water temperature"
+            },
+            "temperature2": {
+                "name": "Average cold water temperature"
+            },
+            "water_flow_state": {
+                "name": "Water Flowing"
+            }
+        },
+        "switch": {
+            "autoshutoff_enabled": {
+                "name": "Autoshutoff Enabled"
+            },
+            "away_mode": {
+                "name": "Away Mode"
+            },
+            "scheduled_leak_test_enabled": {
+                "name": "Scheduled Leak Test Enabled"
+            }
+        },
+        "update": {
+            "firmware_update": {
+                "name": "Firmware Update"
+            }
+        },
+        "valve": {
+            "shutoff_valve": {
+                "name": "Shutoff valve"
+            }
+        }
+    },
+    "exceptions": {
+        "auth_failed": {
+            "message": "Authentication failed. Please reauthenticate."
+        }
+    },
+    "issues": {
+        "energy_coverage": {
+            "description": "These categories have positive usage in Phyn's accepted imported history but are not selected under Energy's Individual water devices:\n\n{statistics}\n\nAdd the desired statistics in [Energy configuration](/config/energy), or exclude intentional omissions in the Phyn integration's options. Checks run every five minutes and cover all selected homes; resolving an omission clears this warning automatically. This checks imported history, not cloud completeness or attribution accuracy. No dashboard settings or usage data have been changed.",
+            "title": "Phyn usage missing from Energy: {home}"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "energy_coverage": "Warn about imported water usage missing from Energy",
+                    "energy_coverage_excluded": "Intentionally omit these usage statistics from coverage warnings",
+                    "excluded_alert_types": "Suppress these alert types"
+                },
+                "description": "Configure alerts and optional Energy dashboard coverage warnings. Coverage checks all selected Phyn homes and never changes your dashboard.",
+                "title": "Phyn Options"
+            }
+        }
+    },
+    "services": {
+        "leak_test": {
+            "description": "Starts a leak test for a phyn smart valve",
+            "fields": {
+                "entity_id": {
+                    "description": "Valve to run leak test from",
+                    "name": "Valve"
+                },
+                "extended": {
+                    "description": "Extended leak test",
+                    "name": "Extended Test"
+                }
+            },
+            "name": "Start a leak test"
         }
     }
 }

@@ -1,7 +1,7 @@
 """ Generic Phyn Device"""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 import math
 import time
 
@@ -12,23 +12,36 @@ if TYPE_CHECKING:
 
 class PhynDevice:
     """Generic Phyn Device"""
+
+    #: Alert types (Phyn API vocabulary) that this device model can emit.
+    #: Subclasses override this to declare which types they care about so the
+    #: coordinator can request only the relevant union per home.
+    ALERT_EVENT_TYPES: list[str] = []
+
     def __init__(
         self,
         coordinator: PhynDataUpdateCoordinator,
         home_id: str,
         device_id: str,
-        product_code: str
+        product_code: str,
+        home_name: str = "",
     ) -> None:
         """Initialize the Phyn device."""
         self._coordinator: PhynDataUpdateCoordinator = coordinator
         self._phyn_home_id: str = home_id
+        self._phyn_home_name: str = home_name
         self._phyn_device_id: str = device_id
         self._product_code: str = product_code
         self._manufacturer: str = "Phyn"
         self._device_state: dict[str, Any] = {}
         self._device_preferences: dict[str, dict[str, Any]] = {}
         self._firmware_info: dict[str, Any] = {}
+        self._active_alerts: dict[str, int] = {}
+        self._latest_device_alerts: list[dict] = []
         self._update_count: int = 0
+        self._alert_listeners: list[Callable[[dict], None]] = []
+        self._seen_alert_ids: set[str] = set()
+        self._alert_seed_done: bool = False
     
     @property
     def available(self) -> bool:
@@ -42,27 +55,51 @@ class PhynDevice:
         return self._coordinator
 
     @property
-    def device_name(self) -> str:
-        """Return device name."""
+    def _base_device_name(self) -> str:
+        """Return model-based device name without any home suffix."""
         return f"{self.manufacturer} {self.model}"
 
     @property
+    def device_name(self) -> str:
+        """Return device name, suffixed with the home when multiple homes are in use."""
+        name = self._base_device_name
+        if self._phyn_home_name:
+            return f"{name} - {self._phyn_home_name}"
+        return name
+
+    @property
     def firmware_has_update(self) -> bool | None:
-        """Return if the firmware has an update"""
+        """Return if the firmware has an update.
+
+        Firmware versions are integer build numbers (e.g., 40809001).
+        The firmware endpoint returns fw_version as int, while device
+        state returns it as a string.
+        """
         if "fw_version" not in self._firmware_info:
             return None
         fw_version = self._firmware_info.get("fw_version")
         device_fw = self._device_state.get("fw_version")
         if fw_version and device_fw:
-            return int(fw_version) > int(device_fw)
+            try:
+                return int(fw_version) > int(device_fw)
+            except (ValueError, TypeError):
+                LOGGER.warning(
+                    "Could not compare firmware versions: server=%s device=%s",
+                    fw_version, device_fw,
+                )
+                return False
         return False
 
     @property
     def firmware_latest_version(self) -> str | None:
-        """Return the latest available firmware version"""
+        """Return the latest available firmware version.
+
+        Firmware endpoint returns fw_version as int; convert to str
+        for consistent comparison with firmware_version (from device state).
+        """
         if "fw_version" not in self._firmware_info:
             return None
-        return self._firmware_info["fw_version"]
+        return str(self._firmware_info["fw_version"])
 
     @property
     def firmware_release_url(self) -> str | None:
@@ -115,10 +152,104 @@ class PhynDevice:
         pass
 
     async def _update_firmware_information(self, *_) -> None:
-        self._firmware_info.update(
-            (await self._coordinator.api_client.device.get_latest_firmware_info(self._phyn_device_id))[0]
-        )
+        firmware_list = await self._coordinator.api_client.device.get_latest_firmware_info(self._phyn_device_id)
+        if firmware_list and isinstance(firmware_list, list) and len(firmware_list) > 0:
+            self._firmware_info.update(firmware_list[0])
+        elif isinstance(firmware_list, dict):
+            self._firmware_info.update(firmware_list)
         LOGGER.debug("%s firmware: %s", self.device_name, self._firmware_info)
+
+    def has_active_alert(self, alert_type: str) -> bool:
+        """Return True if the given alert type is currently active."""
+        return self._active_alerts.get(alert_type, 0) > 0
+
+    def has_ongoing_alert(self, alert_type: str) -> bool:
+        """Return True if an ongoing alert of the given type exists in the most
+        recently fetched alerts.  Checks ``ongoing: True`` or ``active: "Y"``
+        so it catches alerts that have been read/acknowledged in the Phyn app
+        but whose underlying condition (e.g. low battery) is still present.
+        """
+        for alert in self._latest_device_alerts:
+            a_type = alert.get("alert_type") or alert.get("type")
+            if a_type != alert_type:
+                continue
+            if alert.get("active") == "Y" or alert.get("ongoing") is True:
+                return True
+        return False
+
+    def add_alert_listener(self, cb: Callable[[dict], None]) -> Callable[[], None]:
+        """Register a callback invoked for each new (unseen, non-excluded) alert.
+
+        Returns a removal function suitable for use with ``async_on_remove``.
+        """
+        self._alert_listeners.append(cb)
+        def remove() -> None:
+            try:
+                self._alert_listeners.remove(cb)
+            except ValueError:
+                pass
+        return remove
+
+    async def _update_alerts(self, *_) -> None:
+        """Read active alerts for this device from the coordinator's cached summary."""
+        self._active_alerts = self._coordinator._alert_active_summary.get(self._phyn_device_id, {})
+        LOGGER.debug("Active alerts for %s: %s", self._phyn_device_id, self._active_alerts)
+
+    async def _update_alert_events(self, *_) -> None:
+        """Detect new Phyn alerts and dispatch them to registered listeners.
+
+        Uses the ``/alerts/latest`` endpoint (returning rich per-alert objects)
+        rather than the active-summary, so each discrete alert occurrence is
+        caught exactly once.  On the very first run the existing alert IDs are
+        seeded into the seen-set to prevent a notification storm on startup.
+        """
+        from ..const import CONF_EXCLUDED_ALERT_TYPES
+        excluded: set[str] = set(
+            self._coordinator.config_entry.options.get(CONF_EXCLUDED_ALERT_TYPES, [])
+        )
+
+        alerts: list[dict] = self._coordinator._alert_latest_by_home.get(self._phyn_home_id, [])
+        LOGGER.debug("Latest alerts (home %s): %d", self._phyn_home_id, len(alerts))
+
+        # Filter to alerts that belong to this device.
+        device_alerts = [
+            a for a in alerts
+            if a.get("device_id") == self._phyn_device_id
+        ]
+
+        self._latest_device_alerts = device_alerts
+
+        if not self._alert_seed_done:
+            # Record all current IDs so we don't replay history on restart.
+            for alert in device_alerts:
+                alert_id = alert.get("id")
+                if alert_id is not None:
+                    self._seen_alert_ids.add(alert_id)
+            self._alert_seed_done = True
+            LOGGER.debug(
+                "Seeded %d existing alert IDs for %s",
+                len(self._seen_alert_ids),
+                self._phyn_device_id,
+            )
+            return
+
+        for alert in device_alerts:
+            alert_id = alert.get("id")
+            if alert_id is None or alert_id in self._seen_alert_ids:
+                continue
+            self._seen_alert_ids.add(alert_id)
+
+            alert_type = alert.get("alert_type") or alert.get("type") or ""
+            if alert_type in excluded:
+                LOGGER.debug("Skipping excluded alert type %r for %s", alert_type, self._phyn_device_id)
+                continue
+
+            LOGGER.debug("New alert for %s: %s", self._phyn_device_id, alert)
+            for cb in list(self._alert_listeners):
+                try:
+                    cb(alert)
+                except Exception as err:  # noqa: BLE001
+                    LOGGER.error("Alert listener error for %s: %s", self._phyn_device_id, err)
 
     async def _update_device_state(self, *_) -> None:
         """Update the device state from the API."""

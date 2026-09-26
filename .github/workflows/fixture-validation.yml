@@ -1,0 +1,229 @@
+name: Isolated fixture runtime validation
+
+on:
+  push:
+    branches:
+      - feature/fixture-usage
+
+permissions:
+  contents: read
+
+jobs:
+  distribution-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate custom integration package
+        uses: home-assistant/actions/hassfest@master
+      - name: Validate HACS package
+        uses: hacs/action@main
+        with:
+          category: integration
+          ignore: topics
+          comment: false
+
+  home-assistant-installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install manifest dependency in a disposable official HA container
+        shell: bash
+        run: |
+          mkdir -p validation-results
+          docker pull ghcr.io/home-assistant/home-assistant:2026.9.3
+          docker image inspect ghcr.io/home-assistant/home-assistant:2026.9.3 \
+            --format '{{json .RepoDigests}}' | tee validation-results/image.txt
+          docker run --rm --entrypoint python \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/work,readonly" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 \
+            /work/scripts/verify_development_install.py \
+            2>&1 | tee validation-results/ha-installer.txt
+      - name: Preserve installer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ha-installer-${{ github.sha }}-${{ github.run_attempt }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  offline-home-assistant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VALIDATION_LANE: hacs-development-artifact
+      AIOPHYN_VERSION: 2026.9.2.dev1
+      AIOPHYN_SHA: b187b745eeb9e0dfd9ba7bf86bcf706a50e41280
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout exact integration revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install exact manifest artifact with all dependencies
+        run: |
+          mkdir -p validation-results
+          {
+            git rev-parse HEAD
+            git log -2 --format=fuller
+            python --version
+            printf 'lane=%s\naiophyn_sha=%s\n' "$VALIDATION_LANE" "$AIOPHYN_SHA"
+          } | tee validation-results/source.txt
+          requirement="$(python -c 'import json; print(json.load(open("custom_components/phyn/manifest.json"))["requirements"][0])')"
+          python -m pip install --report validation-results/install.json \
+            -r requirements_test_public.txt \
+            pytest-homeassistant-custom-component==0.13.366 \
+            homeassistant==2026.9.3 \
+            "$requirement" \
+            2>&1 | tee validation-results/install.txt
+          python -m pip check | tee validation-results/pip-check.txt
+
+      - name: Check generated English translations
+        run: python scripts/sync_translations.py --check
+
+      - name: Record exact source and dependency provenance
+        run: |
+          {
+            git rev-parse HEAD
+            git log -1 --format=fuller
+            python --version
+            python - <<'PY'
+          from importlib.metadata import distribution
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+          from packaging.requirements import Requirement
+
+          import aiophyn
+
+          for name, expected in (
+              ("homeassistant", "2026.9.3"),
+              ("pytest-homeassistant-custom-component", "0.13.366"),
+              ("aiophyn", os.environ["AIOPHYN_VERSION"]),
+          ):
+              package = distribution(name)
+              print(f"{name}=={package.version}")
+              print(f"location: {package.locate_file('')}")
+              direct_url = package.read_text("direct_url.json")
+              print(f"direct_url: {direct_url}")
+              assert package.version == expected
+              if name == "aiophyn":
+                  source = json.loads(direct_url)
+                  manifest = json.loads(Path("custom_components/phyn/manifest.json").read_text())
+                  requirement = Requirement(manifest["requirements"][0])
+                  url = urlsplit(requirement.url)
+                  expected_url = urlunsplit(url._replace(fragment=""))
+                  assert source["url"] == expected_url, source
+                  assert source["archive_info"]["hashes"]["sha256"] == parse_qs(url.fragment)["sha256"][0]
+                  imported = Path(aiophyn.__file__).resolve()
+                  installed = Path(package.locate_file("aiophyn/__init__.py")).resolve()
+                  print(f"imported aiophyn: {imported}")
+                  assert imported == installed, (imported, installed)
+              else:
+                  assert direct_url is None, f"{name} must use the published package"
+          PY
+            python -m pip freeze
+          } | tee validation-results/provenance.txt
+
+      - name: Collect offline tests with the real Home Assistant harness
+        run: |
+          python -m pytest tests --collect-only -q \
+            --disable-socket --allow-unix-socket \
+            | tee validation-results/collection.txt
+
+      - name: Execute offline Recorder, service, and lifecycle tests
+        run: |
+          python -m pytest tests -v --tb=short \
+            --disable-socket --allow-unix-socket \
+            --junitxml=validation-results/junit.xml \
+            | tee validation-results/pytest.txt
+
+      - name: Checkout exact candidate for equivalent Phase 2 editable steps
+        uses: actions/checkout@v4
+        with:
+          repository: rsocko/aiophyn
+          ref: ${{ env.AIOPHYN_SHA }}
+          path: .aiophyn
+          persist-credentials: false
+
+      - name: Execute committed Phase 2 commands in a fresh editable environment
+        run: |
+          python - <<'PY' 2>&1 | tee validation-results/phase2-equivalent.txt
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          import yaml
+
+          workflow = yaml.safe_load(Path(".github/workflows/phase2-tests.yml").read_text())
+          steps = {
+              step["name"]: step["run"]
+              for step in workflow["jobs"]["tests"]["steps"]
+              if "run" in step
+          }
+          environment = Path(os.environ["RUNNER_TEMP"]) / "phase2-editable"
+          subprocess.run([sys.executable, "-m", "venv", str(environment)], check=True)
+          env = os.environ.copy()
+          env.update(
+              PATH=f"{environment / 'bin'}{os.pathsep}{env['PATH']}",
+              VIRTUAL_ENV=str(environment),
+              AIOPHYN_SOURCE="repo",
+              AIOPHYN_VERSION="",
+              EXPECTED_SHA=env["AIOPHYN_SHA"],
+              GITHUB_OUTPUT=str(Path(env["RUNNER_TEMP"]) / "phase2-selection-output"),
+          )
+
+          def run_step(name):
+              print(f"\nEquivalent committed Phase 2 step: {name}", flush=True)
+              subprocess.run(
+                  ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", steps[name]],
+                  env=env,
+                  check=True,
+              )
+
+          env["TEST_SCOPE"] = "all"
+          for name in (
+              "Validate source and scope",
+              "Verify candidate checkout",
+              "Install dependencies (repo source)",
+              "Check dependencies and provenance",
+              "Run full test suite",
+          ):
+              run_step(name)
+          env["TEST_SCOPE"] = "phase2"
+          run_step("Validate source and scope")
+          run_step("Run Phase 2 tests")
+          help_result = subprocess.run(
+              ["hass", "--help"], env=env, check=True, text=True, stdout=subprocess.PIPE
+          )
+          print(help_result.stdout, flush=True)
+          Path("validation-results/hass-help.txt").write_text(help_result.stdout)
+          assert "--skip-pip-packages" in help_result.stdout
+          print("Verified selective --skip-pip-packages CLI flag; no HA startup.")
+          PY
+
+      - name: Preserve diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixture-validation-${{ github.sha }}-${{ github.run_attempt }}
+          path: validation-results/
+          if-no-files-found: error
+          retention-days: 7

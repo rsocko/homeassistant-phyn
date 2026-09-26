@@ -1,5 +1,10 @@
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
-pytest-homeassistant-custom-component<=0.13.109
+# Linux / Python 3.14; pins Home Assistant 2026.9.3 through the harness.
+pytest-homeassistant-custom-component==0.13.366
 pytest-cov>=4.1.0
-aiophyn>=2025.10.1
+# Explicit recorder deps required by some local/uv resolutions.
+psutil-home-assistant>=0.0.1
+fnv-hash-fast>=1.6.0
+aiophyn>=2026.9.1
+PySocks>=1.7.1
