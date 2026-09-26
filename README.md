@@ -8,6 +8,7 @@ This integration currently provides the following capabilities:
 
 - Daily water usage (compatible with Energy dashboard)
 - Per-fixture water usage statistics, historical imports, and correction reloads (this fork)
+- Optional read-only configured fixture-category counts for Phyn Plus (this fork)
 - Average water temperature, pressure, and flow (realtime not available)
 - Shutoff valve control
 - Away mode control
@@ -16,7 +17,7 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This fork's opt-in development release is **2026.9.2-beta.2**, requiring
+This fork's opt-in development release is **2026.9.2-beta.3**, requiring
 **Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
 guarantee for every newer release. It is intended for backed-up development
 instances first, not an automatic production upgrade.
@@ -35,7 +36,7 @@ development wheel. **Do not install aiophyn manually or select the moving
    Enable the entity if disabled, then turn the switch on. Return to HACS and
    select **Update information**.
 4. Choose **Download** or **Redownload**, open **Need a different version?**, and
-   select **v2026.9.2-beta.2** (some UIs omit the `v`).
+   select **v2026.9.2-beta.3** (some UIs omit the `v`).
 5. Restart Home Assistant and verify the installed version before configuring
    Phyn or running the bounded checks in the runbook.
 

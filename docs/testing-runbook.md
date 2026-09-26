@@ -279,7 +279,7 @@ does not automatically select the aiophyn fork. The README's upstream HACS
 distribution does not install this fork's fixture additions. Both integrations
 use domain `phyn`; do not install upstream and this fork side by side.
 
-The opt-in integration prerelease **v2026.9.2-beta.2** selects the public
+The opt-in integration prerelease **v2026.9.2-beta.3** selects the public
 **aiophyn 2026.9.2.dev1** wheel from the fork's **v2026.9.2.dev1** release.
 The exact URL and SHA-256 are recorded in `custom_components/phyn/manifest.json`.
 The library release includes its wheel, source distribution and checksums.
@@ -334,19 +334,19 @@ The operator performs installation and restarts; production remains unchanged.
    **Settings > Devices & services > Entities**, filtered to HACS, including
    disabled entities. Enable the entity if needed, then turn its switch on
    ("Pre-releases preferred"). Return to HACS, select **Update information**,
-   then **Download/Redownload > Need a different version? > v2026.9.2-beta.2**.
+   then **Download/Redownload > Need a different version? > v2026.9.2-beta.3**.
    A UI may omit the leading `v`.
    An installed/latest SHA such as `ff0004b` is the old default branch, not this
    release. If the selected version is absent, stop rather than installing the
    default branch or editing the installed manifest.
-7. Restart HA normally. HACS should report `2026.9.2-beta.2`; HA must not report
+7. Restart HA normally. HACS should report `2026.9.2-beta.3`; HA must not report
    dependency/setup failures. HA installs the exact manifest wheel without a
    separate `pip install`, editable checkout or `--skip-pip` flag.
 8. Configure Phyn in **Settings > Devices & services** only if it is not already
    configured. Normal polling can immediately import usage into the **dev**
    Recorder; a service dry-run does not disable these background imports.
 9. Verify devices/entities and logs. The integration manifest version is
-   `2026.9.2-beta.2`; installed library distribution and `aiophyn.__version__`
+   `2026.9.2-beta.3`; installed library distribution and `aiophyn.__version__`
    must both be `2026.9.2.dev1`, with the manifest URL as installation provenance.
    The manifest checksum is exercised by CI's installer and installed-file checks;
    HA's uv may leave the metadata hash empty. A read-only inspection from the same container Python environment
@@ -364,6 +364,28 @@ The operator performs installation and restarts; production remains unchanged.
     with no unexpected duplicate usage or fixture-state pause notice. Keep
     app-based attribution edits separate and deliberate: they modify the real
     account. HA review/editing remains future work (#1/#2 in this repository).
+
+### Beta 3 inventory-count check
+
+Upgrading a working beta 2 installation requires no statistics reset, storage
+file changes, or removal/recreation of the Phyn config entry. Historical series
+IDs and the ledger schema are unchanged. The same pinned aiophyn development
+wheel remains in use; this is not a new SDK release.
+
+After updating through HACS and restarting HA, open **Settings > Devices &
+services > Entities**, filter to **Phyn** (not HACS), and include disabled
+entities. Enable a desired **Configured [category] count** sensor, then open
+its existing Phyn Plus monitor's device page. Compare its value with that home's
+configured count in the Phyn app. All API categories, including zero counts,
+are offered disabled by default; they are not individual physical fixtures.
+
+Counts refresh approximately hourly. A count entity's History shows recorded
+inventory changes only. Keep using external `phyn:` statistics in Energy or a
+Statistics Graph card for consumption; enabling counts creates no second usage
+series. Zero/missing inventory never deletes or suppresses usage history.
+An inventory failure should show unavailable counts and a logged refresh error,
+not zero counts or a fixture-statistics reset. Do not deliberately mutate the
+real Phyn inventory merely to check this installation.
 
 ### Missing entity values during the pilot
 
