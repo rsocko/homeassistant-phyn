@@ -10,7 +10,7 @@
   },
   {
     "name": "human-overrides-stronger-model",
-    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": "008", "sub_fixture_id": 12, "tell_us": "Private synthetic label"}, "latest_suggested_fixtures_result": {"suggested_fixtures": [
+    "event": {"total_flow": 2, "latest_user_feedback": {"fixture_id": "008", "tell_us": "Private synthetic label"}, "latest_suggested_fixtures_result": {"suggested_fixtures": [
       {"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.99},
       {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.1}
     ]}},
@@ -37,8 +37,8 @@
     "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
   },
   {
-    "name": "subfixture-only-is-not-category-selection",
-    "event": {"total_flow": 2, "latest_user_feedback": {"sub_fixture_id": 12}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
+    "name": "unknown-metadata-only-is-not-category-selection",
+    "event": {"total_flow": 2, "latest_user_feedback": {"unknown_metadata": 12}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
     "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
   },
   {

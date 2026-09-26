@@ -94,7 +94,6 @@ class FixtureAttribution:
     tied_confidence: bool
     feedback_conflict: bool
     review_reasons: tuple[str, ...]
-    sub_fixture_id: Any = field(default=None, repr=False)
 
 
 def _category_id(value: Any) -> int | None:
@@ -202,7 +201,6 @@ def resolve_fixture_attribution(event: dict[str, Any]) -> FixtureAttribution:
         tied_confidence=tied,
         feedback_conflict=conflict,
         review_reasons=tuple(reasons),
-        sub_fixture_id=feedback.get("sub_fixture_id"),
     )
 
 

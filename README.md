@@ -299,8 +299,8 @@ For fetched observations, an explicit, valid `latest_user_feedback.fixture_id`
 takes precedence over model predictions. This is a **category ID**, not a unique
 household fixture. Its label comes from matching suggestions already in the
 response, or `Fixture type N` if no unambiguous matching name is available.
-No additional catalog request is made. `sub_fixture_id` remains separate private
-metadata in the observation; it is not used as a statistics bucket. Freeform
+No additional catalog request is made for attribution. Unrecognized feedback
+metadata is ignored, not retained in attribution diagnostics or the ledger. Freeform
 `tell_us`, unsupported label fields, and an algorithm called `user-feedback`
 are not substitutes for an explicit category selection.
 

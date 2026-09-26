@@ -254,7 +254,7 @@ async def test_attribution_refetch_preserves_total_history_and_preview(hass, rec
     before = deepcopy(await importer._store.async_load())
     corrected = deepcopy(observed)
     corrected["latest_user_feedback"] = {
-        "fixture_id": "007", "sub_fixture_id": 12, "tell_us": "Private text, not a category",
+        "fixture_id": "007", "tell_us": "Private text, not a category",
     }
     preview = await importer.async_preview_import_events([corrected])
     assert preview["corrections_detected"] == 1

@@ -303,9 +303,9 @@ def test_first_among_maxima_not_first_candidate():
     assert result.review_reasons == ("tied_confidence",)
 
 
-def test_human_source_and_private_subfixture_are_distinct(caplog):
+def test_human_source_ignores_unrecognized_private_metadata(caplog):
     event = {
-        "latest_user_feedback": {"fixture_id": 7, "sub_fixture_id": 12, "tell_us": "private"},
+        "latest_user_feedback": {"fixture_id": 7, "unknown_metadata": "private", "tell_us": "private"},
         "latest_suggested_fixtures_result": {"suggested_fixtures": [
             {"fixture_id": 8, "fixture_name": "Toilet", "confidence_score": 0.99},
         ]},
@@ -315,13 +315,14 @@ def test_human_source_and_private_subfixture_are_distinct(caplog):
     assert result.confidence is None
     assert result.top_prediction is not None
     assert result.top_prediction.confidence == 0.99
-    assert result.sub_fixture_id == 12
+    assert "private" not in repr(result)
+    assert not hasattr(result, "unknown_metadata")
     assert result.label == "Fixture type 7"
     event["latest_suggested_fixtures_result"] = []
     assert resolve_fixture_name(event) == "Fixture type 7"
     assert "invalid_prediction_metadata" in caplog.text
     assert "private" not in caplog.text
-    assert "sub_fixture_id" not in caplog.text
+    assert "unknown_metadata" not in caplog.text
 
 
 def test_saved_evidence_does_not_use_raw_attribution(monkeypatch):

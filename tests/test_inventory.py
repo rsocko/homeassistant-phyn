@@ -71,7 +71,7 @@ def test_invalid_inventory_rejects_whole_snapshot(payload):
 
 def test_parser_keeps_zero_and_drops_unneeded_metadata():
     payload = {"list": [
-        {**row(0, " Other ", 0), "sub_fixtures": [{"name": "Private"}]},
+        {**row(0, " Other ", 0), "unknown_metadata": [{"name": "Private"}]},
         row(),
     ]}
     assert parse_inventory(payload) == {
@@ -217,7 +217,7 @@ async def test_real_registry_defaults_and_enabled_count_state(
         config_entry=entry, suggested_object_id="configured_toilet_count",
         disabled_by=None,
     )
-    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    entry.mock_state(hass, ConfigEntryState.LOADED)
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     await hass.async_block_till_done()
 
