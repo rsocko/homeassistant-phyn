@@ -19,15 +19,15 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This fork's opt-in development release is **2026.9.2-beta.6**, requiring
+This fork's opt-in development release is **2026.9.2-beta.7**, requiring
 **Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
 guarantee for every newer release. It is intended for backed-up development
 instances first, not an automatic production upgrade.
 
-**Start here:** [Beta 6 installation, features, and tester checklist](docs/beta6-tester-guide.md).
+**Start here:** [Beta 7 installation, features, and tester checklist](docs/beta7-tester-guide.md).
 For a short announcement, see the [copy-ready GitHub discussion draft](docs/beta6-discussion.md).
-Beta 6 supersedes betas 1-5; their releases and tags remain available for historical
-reference. Use beta 6 for new testing.
+Beta 7 supersedes betas 1-6; their releases and tags remain available for historical
+reference. Use beta 7 for new testing.
 
 HACS downloads the integration; HA installs its exact, checksum-pinned aiophyn
 development wheel. **Do not install aiophyn manually or select the moving
@@ -43,7 +43,7 @@ development wheel. **Do not install aiophyn manually or select the moving
    Enable the entity if disabled, then turn the switch on. Return to HACS and
    select **Update information**.
 4. Choose **Download** or **Redownload**, open **Need a different version?**, and
-   select **v2026.9.2-beta.6** (some UIs omit the `v`).
+   select **v2026.9.2-beta.7** (some UIs omit the `v`).
 5. Restart Home Assistant and verify the installed version before configuring
    Phyn or running the bounded checks in the runbook.
 

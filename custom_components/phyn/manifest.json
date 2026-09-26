@@ -11,5 +11,5 @@
   "requirements": [
     "aiophyn@https://github.com/rsocko/aiophyn/releases/download/v2026.9.2.dev1/aiophyn-2026.9.2.dev1-py3-none-any.whl#sha256=ba99fd02d40199fb3c97a7ba3d8081786ec4717c47186cb041be8930d9d4c7fb"
   ],
-  "version": "2026.9.2-beta.6"
+  "version": "2026.9.2-beta.7"
 }

@@ -1,6 +1,6 @@
-# Phyn Water Usage beta 6: installation and testing
+# Phyn Water Usage beta 7: installation and testing
 
-**Release:** [v2026.9.2-beta.6](https://github.com/rsocko/homeassistant-phyn/releases/tag/v2026.9.2-beta.6)
+**Release:** [v2026.9.2-beta.7](https://github.com/rsocko/homeassistant-phyn/releases/tag/v2026.9.2-beta.7)
 
 This is an opt-in development prerelease for backed-up Home Assistant instances,
 not a production-readiness guarantee. It includes the completed water-usage
@@ -56,9 +56,9 @@ Normal polling does begin fetching data and can write history into HA.
    filtered to HACS with disabled entities visible. Enable it if needed and turn
    it on. Return to the repository and choose **Update information**.
 4. Choose **Download** or **Redownload**, then **Need a different version?**
-   and select **v2026.9.2-beta.6**. Some versions omit the leading `v`.
+   and select **v2026.9.2-beta.7**. Some versions omit the leading `v`.
    Do not choose the moving feature branch or accept a commit hash as the release.
-5. Restart Home Assistant. Verify that Phyn reports **2026.9.2-beta.6** and
+5. Restart Home Assistant. Verify that Phyn reports **2026.9.2-beta.7** and
    has no dependency or setup errors.
 6. If Phyn is already configured, **keep the existing config entry**.
    For a fresh installation, go to **Settings > Devices & services > Add
@@ -71,7 +71,7 @@ not the saved configuration. A working beta 2-5 upgrade needs no statistics rese
 storage-file edits, or delete/re-add. Beta 1 is superseded and has a known Logbook
 defect; do not use it for new testing.
 
-HACS wording varies. If beta 6 is not visible, refresh repository information
+HACS wording varies. If beta 7 is not visible, refresh repository information
 and check prerelease settings rather than editing the installed manifest.
 
 ## First-run checklist
@@ -225,7 +225,7 @@ release tags does not make a code-only downgrade safe. See the
 Open an [issue](https://github.com/rsocko/homeassistant-phyn/issues) for a
 reproducible problem. Include:
 
-- Integration version **2026.9.2-beta.6**, HA version, installation type, and HACS
+- Integration version **2026.9.2-beta.7**, HA version, installation type, and HACS
   version; fresh install versus upgrade and the previous integration version.
 - Monitor model(s), number of selected monitors, and whether multiple homes
   are involved. Use aliases, not home addresses or device identifiers.
@@ -245,7 +245,7 @@ problem.
 
 A read-only event-review panel, user-confirmed category feedback, editable
 inventory counts, inventory-mismatch warnings, and richer diagnostics are future
-work. There is no bundled history editor in beta 6, no automatic Energy setup,
+work. There is no bundled history editor in beta 7, no automatic Energy setup,
 and no supported editing of event volume/time or event deletion/splitting/merging.
 
 This guide is a test procedure, not a claim that a live installation/upgrade
