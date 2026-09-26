@@ -51,6 +51,12 @@ this fork, see [jordanruthe/homeassistant-phyn](https://github.com/jordanruthe/h
 
 Configuration is done via the UI. Add the "Phyn" integration via the Integration settings and provide existing Phyn username and password.
 
+During setup and reconfiguration, each device option includes its Phyn home,
+device name (or readable model), and identifier, for example
+**Cape - Main line (device ID)**. Identically named homes have their home IDs
+added to the headings so neither home's devices are hidden. Reconfiguration
+preserves homes with no selected devices rather than reselecting them.
+
 * In the Home Assistant UI, go to Settings > Devices & services, go to the Devices tab, and click "+ Add Device" on the bottom right.
 
 * Search for and select "Phyn".

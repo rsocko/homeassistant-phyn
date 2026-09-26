@@ -372,6 +372,12 @@ file changes, or removal/recreation of the Phyn config entry. Historical series
 IDs and the ledger schema are unchanged. The same pinned aiophyn development
 wheel remains in use; this is not a new SDK release.
 
+If opening device setup or reconfiguration, verify that every selectable option
+includes the Phyn home, device name/model, and ID. Both `device_name` and `name`
+from home discovery are supported. Reconfiguration must keep intentionally
+deselected homes empty; duplicate home names must not hide either device list.
+No removal/recreation of a working config entry is needed to obtain the update.
+
 After updating through HACS and restarting HA, open **Settings > Devices &
 services > Entities**, filter to **Phyn** (not HACS), and include disabled
 entities. Enable a desired **Configured [category] count** sensor, then open

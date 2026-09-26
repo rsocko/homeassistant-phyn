@@ -48,10 +48,38 @@ async def _get_api_and_homes(hass: core.HomeAssistant, username: str, password: 
     return api, homes
 
 
-def _device_label(device: dict) -> str:
+def _device_label(device: dict, home_name: str) -> str:
     """Return a human-readable label for a device."""
-    name = device.get("device_name") or device.get("product_code", "")
-    return f"{name} ({device['device_id']})" if name else device["device_id"]
+    name = next(
+        (
+            value.strip()
+            for key in ("device_name", "name", "product_code")
+            if isinstance(value := device.get(key), str) and value.strip()
+        ),
+        "",
+    )
+    name = {
+        "PP1": "Phyn Plus", "PP2": "Phyn Plus (2nd generation)",
+        "PC1": "Phyn Smart Water Assistant", "PW1": "Phyn Smart Water Sensor",
+    }.get(name, name)
+    label = f"{name} ({device['device_id']})" if name else device["device_id"]
+    return f"{home_name} - {label}"
+
+
+def _home_selection_keys(homes: list[dict]) -> dict[str, str]:
+    """Keep home headings readable without merging identically named homes."""
+    names = {
+        home["id"]: (
+            home["name"].strip()
+            if isinstance(home.get("name"), str) and home["name"].strip()
+            else home["id"]
+        )
+        for home in homes if home.get("devices")
+    }
+    return {
+        home_id: f"{name} ({home_id})" if list(names.values()).count(name) > 1 else name
+        for home_id, name in names.items()
+    }
 
 
 def _build_device_schema(homes: list[dict], current_device_ids: list[str] | None = None) -> vol.Schema:
@@ -59,20 +87,22 @@ def _build_device_schema(homes: list[dict], current_device_ids: list[str] | None
 
     Each field key is the home name so that HA's config flow renders it as the
     field heading (HA falls back to the raw key when no translation entry exists).
-    If *current_device_ids* is provided the defaults are pre-populated with the
-    currently selected devices for each home (falling back to all devices in that
-    home when none are currently selected).
+    Reconfiguration preserves empty selections for homes the user excluded.
+    Initial setup defaults to all devices.
     """
-    current = set(current_device_ids) if current_device_ids else set()
+    current = set(current_device_ids or [])
+    home_keys = _home_selection_keys(homes)
     fields: dict = {}
     for home in homes:
         if not home.get("devices"):
             continue
-        home_name = home.get("name", home["id"])
-        device_map = {d["device_id"]: _device_label(d) for d in home["devices"]}
+        home_name = home_keys[home["id"]]
+        device_map = {
+            d["device_id"]: _device_label(d, home_name) for d in home["devices"]
+        }
         all_ids = list(device_map.keys())
-        if current:
-            default_ids = [d for d in all_ids if d in current] or all_ids
+        if current_device_ids is not None:
+            default_ids = [d for d in all_ids if d in current]
         else:
             default_ids = all_ids
         fields[vol.Optional(home_name, default=default_ids)] = cv.multi_select(device_map)
@@ -83,10 +113,11 @@ def _extract_device_ids(user_input: dict, homes: list[dict]) -> list[str]:
     """Flatten selected device IDs from per-home fields in a submitted form."""
     selected: list[str] = []
     seen: set[str] = set()
+    home_keys = _home_selection_keys(homes)
     for home in homes:
         if not home.get("devices"):
             continue
-        home_name = home.get("name", home["id"])
+        home_name = home_keys[home["id"]]
         for device_id in user_input.get(home_name, []):
             if device_id not in seen:
                 seen.add(device_id)
