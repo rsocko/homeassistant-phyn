@@ -119,7 +119,8 @@ class PhynHistoryBackfill:
                 await self._async_update(status="interrupted")
                 raise HomeAssistantError("Phyn history backfills are stopping")
             self._task = self.hass.async_create_background_task(
-                self._async_run(start, end), f"Phyn history backfill {self.device.id}"
+                self._async_run(start, end), f"Phyn history backfill {self.device.id}",
+                eager_start=False,
             )
         async_dispatcher_send(self.hass, self.signal)
 

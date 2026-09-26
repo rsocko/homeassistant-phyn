@@ -339,7 +339,9 @@ async def test_native_platforms_device_link_and_actions(hass, device, monkeypatc
     assert hass.states.get(button_id).state != "unavailable"
     await hass.config_entries.async_unload_platforms(entry, ["button", "number", "sensor"])
     await entry._async_process_on_unload(hass)
-    assert hass.states.get(status_id) is None
+    unloaded = hass.states.get(status_id)
+    assert unloaded.state == "unavailable"
+    assert unloaded.attributes["restored"] is True
 
 
 async def test_status_is_not_meter_and_controls_ignore_monitor_online_state(device):
