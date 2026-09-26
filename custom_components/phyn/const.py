@@ -26,5 +26,7 @@ ALL_ALERT_TYPES: dict[str, str] = {
 }
 
 CONF_EXCLUDED_ALERT_TYPES = "excluded_alert_types"
+CONF_ENERGY_COVERAGE = "energy_coverage"
+CONF_ENERGY_COVERAGE_EXCLUDED = "energy_coverage_excluded"
 CONF_HOME_ID = "home_id"
 CONF_DEVICE_IDS = "device_ids"

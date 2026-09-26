@@ -77,7 +77,7 @@ class PhynInventoryCoordinator(DataUpdateCoordinator[dict[int, FixtureInventory]
                         self.device.id
                     )
                 )
-            return parse_inventory(payload)
+            inventory = parse_inventory(payload)
         except AuthenticationError as err:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN, translation_key="auth_failed"
@@ -86,6 +86,10 @@ class PhynInventoryCoordinator(DataUpdateCoordinator[dict[int, FixtureInventory]
             raise UpdateFailed("Could not fetch configured fixture counts") from err
         except ValueError as err:
             raise UpdateFailed(f"Invalid configured fixture counts: {err}") from err
+        self.device.configured_fixture_categories = {
+            category.name for category in inventory.values() if category.count > 0
+        }
+        return inventory
 
 
 class PhynInventoryCountSensor(PhynEntity, SensorEntity):

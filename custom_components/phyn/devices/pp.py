@@ -86,6 +86,7 @@ class PhynPlusDevice(PhynDevice):
         self._fixture_import_lock: Lock = Lock()
         self._fixture_task: Task[None] | None = None
         self._fixture_stopping = False
+        self.configured_fixture_categories: set[str] = set()
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
             self._phyn_device_id,
@@ -298,6 +299,11 @@ class PhynPlusDevice(PhynDevice):
 
         if from_dt >= to_dt:
             raise HomeAssistantError("Fixture import start must be before its end")
+
+        if not dry_run and self.configured_fixture_categories:
+            await self._fixture_stats_importer.async_register_categories(
+                self.configured_fixture_categories
+            )
 
         events = await self._coordinator.api_client.device.get_water_usage_events(
             self._phyn_device_id,

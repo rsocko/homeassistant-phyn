@@ -95,6 +95,7 @@ async def test_counts_are_not_water_or_statistics_entities(hass, entry, inventor
     assert sensor.device_info["identifiers"] == {(DOMAIN, "device_one")}
     assert sensor.native_value == 2
     assert zero.native_value == 0
+    assert device.configured_fixture_categories == {"Toilet"}
     assert sensor.available
     assert not sensor.entity_registry_enabled_default
     assert sensor.device_class is None
@@ -133,6 +134,7 @@ async def test_failures_missing_categories_and_recovery(hass, entry, inventory_d
     assert sensor.available
     assert sensor.native_value == 0
     assert sensor.name == "Configured Renamed toilet count"
+    assert device.configured_fixture_categories == set()
     assert sensor.unique_id == "device_one_configured_fixture_count_8"
 
 

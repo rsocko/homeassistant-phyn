@@ -300,9 +300,39 @@ labels in saved evidence, consumption rows, and Energy selections are preserved.
 Dry runs never rename statistics. An explicit custom name in Energy can still
 override the statistic's display name.
 
-Inventory categories without imported events do not yet get usage statistics.
-Missing history is not measured zero consumption. Energy selections remain
-user-managed; no dashboard entries or Repairs are created automatically.
+Categories with a positive configured inventory count are registered as external
+statistics during the next non-dry-run fixture import after inventory refresh
+(normally within about 15 successful monitor update cycles). Registration uses
+metadata only: no event, consumption value, zero row, or baseline is invented.
+They can be selected in Energy before usage arrives, but graphs have no data
+until actual events are imported. Count entities do not need to be enabled.
+Existing label-based statistic IDs are reused; registration does not rewrite
+attribution or join differently named series. A later API category-name change
+or ID-only event label may therefore produce a separate series, as with existing
+event imports. Zero-count categories still get statistics when usage is observed.
+Falling counts, missing categories, and inventory failures never delete history
+or previously registered metadata. Registration is journaled with the existing
+ledger so interrupted writes can recover without orphaning a series.
+
+Under **Phyn > Configure**, optionally enable **Warn about imported water usage
+missing from Energy**. This defaults off and checks **all selected Phyn homes**,
+not just the home hosting HA. Every five minutes it compares categories with
+positive accepted event contributions against **Energy > Individual water
+devices**, and creates one aggregated **Settings > System > Repairs** warning per
+home for omissions. Empty inventory-only statistics do not trigger warnings.
+This checks all retained imported history, not only Energy's displayed date range.
+Corrections that move all positive contributions away from a category remove it
+from the check. Pending, uncommitted contributions do not trigger warnings.
+
+Add the desired statistics to Energy, or use **Intentionally omit these usage
+statistics from coverage warnings** in Phyn's options. Warnings clear on a later
+check when covered, excluded, or no longer backed by positive contributions;
+disabling the option clears them immediately. Energy custom names and upstream
+relationships do not change the statistic IDs used for comparison. Selecting
+only a parent whole-house meter does not include its categories automatically.
+No Energy preferences are changed, and there is no automatic dashboard setup.
+These warnings indicate dashboard omissions, not complete cloud coverage or
+correct Phyn attribution. Missing history is not measured zero consumption.
 
 Review and correct event attribution in the **Phyn app** for now. Home Assistant
 offers aggregate statistics and import/reload previews, not an event attribution

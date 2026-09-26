@@ -577,11 +577,9 @@ class PhynFixtureStatisticsImporter:
             # Display names may change without changing accepted usage evidence.
             if any(actual_metadata.get(key) != wanted[key] for key in wanted if key != "name"):
                 return False
-            if not expected:
-                continue
             result = await recorder.async_add_executor_job(
                 statistics_during_period, self._hass,
-                datetime.fromtimestamp(min(expected) / 1000, timezone.utc),
+                datetime.fromtimestamp(min(expected, default=0) / 1000, timezone.utc),
                 None, {identifier}, "hour", None, {"state", "sum"},
             )
             actual = {
@@ -593,6 +591,49 @@ class PhynFixtureStatisticsImporter:
             ):
                 return False
         return True
+
+    def usage_statistics(self) -> dict[str, str]:
+        """Committed positive-usage series, excluding inventory-only entries."""
+        labels = {
+            event["fixture"] for event in self._state.events.values()
+            if event["volume"] > 0
+        }
+        return {
+            self._state.fixture_ids[label]: f"Phyn {self._home_name} - {label} Water"
+            for label in sorted(labels)
+        }
+
+    @property
+    def home_name(self) -> str:
+        """Phyn home name used in statistics and coverage warnings."""
+        return self._home_name
+
+    async def async_register_categories(self, labels: set[str]) -> None:
+        """Journal metadata-only series without inventing usage or a baseline."""
+        if any(not isinstance(label, str) or not label.strip() for label in labels):
+            raise HomeAssistantError("Configured fixture category names must be nonempty")
+        async with self._operation_lock:
+            await self._prepare()
+            if self._pending:
+                await self._finish_pending()
+            if not await self._matches(self._state.rows, self._state.fixture_ids):
+                self._blocked_reason = "stored Recorder values differ from accepted event evidence"
+                self._notice(self._blocked_reason)
+                raise HomeAssistantError("Fixture statistics differ from saved evidence; no automatic repair")
+            mapping = dict(self._state.fixture_ids)
+            rows: Rows = {}
+            for label in sorted(labels - mapping.keys()):
+                identifier = fixture_statistic_id(self._device_id, label)
+                if identifier in mapping.values():
+                    raise HomeAssistantError("Configured fixture statistic ID collision")
+                mapping[label] = identifier
+                rows[label] = {}
+            if rows:
+                plan = PendingImport({}, mapping, rows)
+                await self._save(self._state, plan)
+                self._pending = plan
+                await self._finish_pending()
+            await self._refresh_names()
 
     async def _refresh_names(self) -> None:
         """Update owned display metadata without writing consumption rows."""

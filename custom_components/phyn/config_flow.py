@@ -15,7 +15,10 @@ from .const import (
     ALL_ALERT_TYPES,
     CONF_EXCLUDED_ALERT_TYPES,
     CONF_DEVICE_IDS,
+    CONF_ENERGY_COVERAGE,
+    CONF_ENERGY_COVERAGE_EXCLUDED,
 )
+from .devices.pp import PhynPlusDevice
 
 DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_USERNAME): str,
@@ -252,9 +255,18 @@ class PhynOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(
+                title="", data={**self._config_entry.options, **user_input}
+            )
 
         current_excluded = self._config_entry.options.get(CONF_EXCLUDED_ALERT_TYPES, [])
+        coverage_excluded = self._config_entry.options.get(CONF_ENERGY_COVERAGE_EXCLUDED, [])
+        statistics = {identifier: identifier for identifier in coverage_excluded}
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator is not None:
+            for device in coordinator.devices:
+                if isinstance(device, PhynPlusDevice):
+                    statistics.update(device._fixture_stats_importer.usage_statistics())
 
         schema = vol.Schema(
             {
@@ -262,6 +274,13 @@ class PhynOptionsFlow(config_entries.OptionsFlow):
                     CONF_EXCLUDED_ALERT_TYPES,
                     default=current_excluded,
                 ): cv.multi_select(ALL_ALERT_TYPES),
+                vol.Optional(
+                    CONF_ENERGY_COVERAGE,
+                    default=self._config_entry.options.get(CONF_ENERGY_COVERAGE, False),
+                ): bool,
+                vol.Optional(
+                    CONF_ENERGY_COVERAGE_EXCLUDED, default=coverage_excluded,
+                ): cv.multi_select(statistics),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

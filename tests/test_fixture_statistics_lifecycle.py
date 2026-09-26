@@ -38,6 +38,40 @@ async def test_statistics_names_distinguish_homes_and_have_identifier_fallback(h
     assert unnamed._metadata("Toilet", "phyn:c")["name"] == "Phyn device_c - Toilet Water"
 
 
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_configured_registration_precedes_fetch_except_dry_run(hass, dry_run):
+    device = PhynPlusDevice(
+        SimpleNamespace(
+            hass=hass,
+            api_client=SimpleNamespace(device=SimpleNamespace(
+                get_water_usage_events=AsyncMock(return_value=[])
+            )),
+        ), "home", "device", "PP1"
+    )
+    device.configured_fixture_categories = {"Toilet"}
+    device._fixture_stats_importer = SimpleNamespace(
+        async_initialize=AsyncMock(), async_register_categories=AsyncMock(),
+        async_import_events=AsyncMock(return_value={}),
+        async_preview_import_events=AsyncMock(return_value={}),
+    )
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 9, 2, tzinfo=timezone.utc)
+    with pytest.raises(HomeAssistantError, match="before its end"):
+        await device.async_import_fixture_statistics(
+            from_datetime=end, to_datetime=start, dry_run=dry_run
+        )
+    device._fixture_stats_importer.async_register_categories.assert_not_awaited()
+    await device.async_import_fixture_statistics(
+        from_datetime=start, to_datetime=end, dry_run=dry_run
+    )
+    if dry_run:
+        device._fixture_stats_importer.async_register_categories.assert_not_awaited()
+    else:
+        device._fixture_stats_importer.async_register_categories.assert_awaited_once_with(
+            {"Toilet"}
+        )
+
+
 @pytest.mark.asyncio
 async def test_initialize_does_not_reload_over_current_state(hass):
     """Device setup must not reload a baseline already restored during refresh."""

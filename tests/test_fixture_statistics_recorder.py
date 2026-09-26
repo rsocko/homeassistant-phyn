@@ -17,6 +17,7 @@ from homeassistant.components.recorder.models.statistics import StatisticMeanTyp
 from homeassistant.components.recorder.statistics import (
     StatisticMetaData,
     async_add_external_statistics,
+    async_list_statistic_ids,
     get_metadata,
     statistics_during_period,
 )
@@ -269,6 +270,95 @@ async def test_pending_history_recovers_across_home_rename(hass, recorder_mock):
         partial(get_metadata, hass, statistic_ids={identifier})
     )
     assert metadata[identifier][1]["name"] == "Phyn NTK - Kitchen Water"
+
+
+async def test_configured_category_registration_is_metadata_only(hass, recorder_mock):
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await importer.async_register_categories({"Toilet", "Dishwasher"})
+    identifiers = dict(importer._state.fixture_ids)
+    saved = deepcopy(await importer._store.async_load())
+    assert importer._state.events == {}
+    assert importer._state.rows == {"Toilet": {}, "Dishwasher": {}}
+    assert importer.usage_statistics() == {}
+    assert importer.current_checkpoint_ms() == 0
+    offered = await async_list_statistic_ids(hass, statistic_type="sum")
+    assert set(identifiers.values()) <= {item["statistic_id"] for item in offered}
+    for identifier in identifiers.values():
+        assert await _read_rows(
+            hass, recorder_mock, datetime(1970, 1, 1, tzinfo=timezone.utc), identifier
+        ) == []
+
+    restored = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await restored.async_register_categories({"Toilet"})
+    assert await restored._store.async_load() == saved
+    await restored.async_register_categories(set())
+    assert restored._state.fixture_ids == identifiers
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    await restored.async_import_events([_event("one", start, 3, "Toilet")])
+    assert restored._state.fixture_ids == identifiers
+    assert restored.usage_statistics() == {
+        identifiers["Toilet"]: "Phyn Cape - Toilet Water"
+    }
+    # Backfill predating registration must be allowed, with no synthetic zeros.
+    await restored.async_import_events([
+        _event("older", start - timedelta(days=60), 2, "Toilet"),
+    ])
+    rows = await _read_rows(
+        hass, recorder_mock, start - timedelta(days=61), identifiers["Toilet"]
+    )
+    assert [row["sum"] for row in rows] == [0, 2, 5]
+    assert await _read_rows(
+        hass, recorder_mock, start - timedelta(days=61), identifiers["Dishwasher"]
+    ) == []
+
+
+async def test_registration_preserves_usage_and_corrections(hass, recorder_mock):
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    await importer.async_import_events([_event("one", start, 5, "Toilet")])
+    identifier = fixture_statistic_id("device", "Toilet")
+    before = await _read_rows(hass, recorder_mock, start - timedelta(hours=1), identifier)
+    await importer.async_register_categories({"Toilet", "Shower"})
+    assert await _read_rows(
+        hass, recorder_mock, start - timedelta(hours=1), identifier
+    ) == before
+    await importer.async_import_events([_event("one", start, 5, "Shower")])
+    assert set(importer.usage_statistics()) == {fixture_statistic_id("device", "Shower")}
+    await importer.async_import_events([_event("one", start, 0, "Shower")])
+    assert importer.usage_statistics() == {}
+
+
+async def test_inventory_registration_pending_recovers(hass, recorder_mock, monkeypatch):
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    original = fixture_module.async_add_external_statistics
+    monkeypatch.setattr(fixture_module, "VERIFY_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", lambda *_: None)
+    with pytest.raises(HomeAssistantError, match="pending Recorder verification"):
+        await importer.async_register_categories({"Toilet"})
+    assert importer._state.fixture_ids == {}
+    assert importer._pending is not None
+    assert importer._pending.updates == {}
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", original)
+    monkeypatch.setattr(fixture_module, "VERIFY_TIMEOUT_SECONDS", 20)
+    restored = PhynFixtureStatisticsImporter(hass, "device")
+    await restored.async_import_events([])
+    assert restored._pending is None
+    assert restored._state.rows == {"Toilet": {}}
+    assert restored.usage_statistics() == {}
+
+
+async def test_empty_registered_series_rejects_unexplained_rows(hass, recorder_mock):
+    importer = PhynFixtureStatisticsImporter(hass, "device")
+    await importer.async_register_categories({"Toilet"})
+    identifier = fixture_statistic_id("device", "Toilet")
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    async_add_external_statistics(
+        hass, importer._metadata("Toilet", identifier),
+        [{"start": start, "state": 9.0, "sum": 9.0}],
+    )
+    await async_recorder_block_till_done(hass)
+    with pytest.raises(HomeAssistantError, match="differ from saved evidence"):
+        await importer.async_register_categories({"Dishwasher"})
 
 
 @pytest.mark.asyncio

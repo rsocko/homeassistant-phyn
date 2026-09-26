@@ -20,6 +20,8 @@ from .const import CLIENT, DOMAIN, CONF_HOME_ID, CONF_DEVICE_IDS
 from .update_coordinator import PhynDataUpdateCoordinator
 from .exceptions import HaAuthError, HaCannotConnect
 from .services import phyn_leak_test_service_setup
+from .devices.pp import PhynPlusDevice
+from .energy_coverage import PhynEnergyCoverage
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -209,6 +211,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         await phyn_leak_test_service_setup(hass)
+        coverage = PhynEnergyCoverage(
+            hass, entry,
+            [device for device in coordinator.devices if isinstance(device, PhynPlusDevice)],
+        )
+        await coverage.async_setup()
 
         return True
     except Exception:

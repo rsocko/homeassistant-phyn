@@ -150,11 +150,19 @@
         "step": {
             "init": {
                 "data": {
-                    "excluded_alert_types": "Suppress these alert types"
+                    "excluded_alert_types": "Suppress these alert types",
+                    "energy_coverage": "Warn about imported water usage missing from Energy",
+                    "energy_coverage_excluded": "Intentionally omit these usage statistics from coverage warnings"
                 },
-                "description": "Choose which alert types should be suppressed and never fire a Home Assistant event.",
-                "title": "Phyn Alert Options"
+                "description": "Configure alerts and optional Energy dashboard coverage warnings. Coverage checks all selected Phyn homes and never changes your dashboard.",
+                "title": "Phyn Options"
             }
+        }
+    },
+    "issues": {
+        "energy_coverage": {
+            "title": "Phyn usage missing from Energy: {home}",
+            "description": "These categories have positive usage in Phyn's accepted imported history but are not selected under Energy's Individual water devices:\n\n{statistics}\n\nAdd the desired statistics in [Energy configuration](/config/energy), or exclude intentional omissions in the Phyn integration's options. Checks run every five minutes and cover all selected homes; resolving an omission clears this warning automatically. This checks imported history, not cloud completeness or attribution accuracy. No dashboard settings or usage data have been changed."
         }
     },
     "services": {
