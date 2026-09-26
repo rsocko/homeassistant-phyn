@@ -67,8 +67,11 @@ async def _read_rows(hass, recorder, start, statistic_id):
     return result.get(statistic_id, [])
 
 
-async def test_device_button_backfill_reuses_correction_safe_recorder_import(hass, recorder_mock):
+async def test_device_button_backfill_reuses_correction_safe_recorder_import(
+    hass, recorder_mock, monkeypatch
+):
     """Button jobs use real evidence/Recorder, retaining history on repeat."""
+    monkeypatch.setattr("custom_components.phyn.history_import.sleep", AsyncMock())
     start = datetime(2026, 9, 1, tzinfo=timezone.utc)
     events = [{
         "id": "button_event",

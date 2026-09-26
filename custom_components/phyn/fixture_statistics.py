@@ -238,7 +238,8 @@ def _contribution_values(end: Any, volume: Any) -> tuple[int, float]:
     return end_ms, float(volume)
 
 
-def _normalize_events(events: list[dict[str, Any]]) -> dict[str, EventContribution]:
+def normalize_fixture_events(events: list[dict[str, Any]]) -> dict[str, EventContribution]:
+    """Validate a whole response, rejecting contradictory duplicate IDs."""
     if not isinstance(events, list):
         raise ValueError("Expected a list of water usage events")
     normalized: dict[str, EventContribution] = {}
@@ -315,7 +316,7 @@ def _plan(
     state: FixtureStatisticsState, events: list[dict[str, Any]],
     device_id: str, force: bool,
 ) -> tuple[PendingImport, int]:
-    observations = _normalize_events(events)
+    observations = normalize_fixture_events(events)
     updates = {
         key: value for key, value in observations.items()
         if state.events.get(key) != value

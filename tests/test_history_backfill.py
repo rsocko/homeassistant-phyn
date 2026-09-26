@@ -18,7 +18,12 @@ from custom_components.phyn.number import PhynHistoryBackfillDays
 from custom_components.phyn.sensor import PhynHistoryBackfillStatus
 
 
-RESULT = {"imported_rows": 4, "events_fetched": 2, "corrections_detected": 1}
+RESULT = {"imported_rows": 4, "events_fetched": 0, "corrections_detected": 1}
+
+
+@pytest.fixture(autouse=True)
+def no_chunk_wait(monkeypatch):
+    monkeypatch.setattr("custom_components.phyn.history_import.sleep", AsyncMock())
 
 
 def make_device(hass, device_id="monitor_a"):
@@ -76,7 +81,7 @@ async def test_day_limits_are_accepted(device, days):
 
 async def test_backfill_uses_exact_elapsed_utc_range_and_persists_success(device):
     backfill = device.history_backfill
-    await backfill.async_set_days(30)
+    await backfill.async_set_days(7)
     before = datetime.now(timezone.utc)
     await PhynHistoryBackfillButton(device).async_press()
     task = backfill._task
@@ -86,11 +91,11 @@ async def test_backfill_uses_exact_elapsed_utc_range_and_persists_success(device
 
     data = backfill.data
     assert data["status"] == "completed"
-    assert data["requested_days"] == 30
+    assert data["requested_days"] == 7
     end = datetime.fromisoformat(data["end_datetime"])
     start = datetime.fromisoformat(data["start_datetime"])
     assert before <= end <= datetime.now(timezone.utc)
-    assert start == end - timedelta(days=30)
+    assert start == end - timedelta(days=7)
     assert end.utcoffset() == timedelta(0)
     device.coordinator.api_client.device.get_water_usage_events.assert_awaited_once_with(
         device.id, from_ts=int(start.timestamp() * 1000), to_ts=int(end.timestamp() * 1000)
@@ -129,7 +134,7 @@ async def test_failure_preserves_last_success_and_can_retry(device, caplog):
     await backfill._task
     assert backfill.data["status"] == "failed"
     assert backfill.data["last_successful_at"] == last_success
-    assert backfill.data["imported_rows"] is None
+    assert backfill.data["imported_rows"] == 0
     assert "API unavailable" in caplog.text
     assert backfill.running is False
     fetch.side_effect = None
@@ -334,7 +339,8 @@ async def test_native_platforms_device_link_and_actions(hass, device, monkeypatc
     state = hass.states.get(status_id)
     assert state.state == "completed"
     assert state.attributes["requested_days"] == 14
-    assert state.attributes["events_fetched"] == 2
+    assert state.attributes["events_fetched"] == 0
+    assert state.attributes["chunks_completed"] == state.attributes["chunks_total"] == 2
     assert "unit_of_measurement" not in state.attributes
     assert hass.states.get(button_id).state != "unavailable"
     await hass.config_entries.async_unload_platforms(entry, ["button", "number", "sensor"])

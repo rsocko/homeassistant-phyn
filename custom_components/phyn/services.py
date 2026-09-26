@@ -192,6 +192,8 @@ async def _async_execute_fixture_statistics_import(
         results: list[dict] = []
         total_rows = 0
         total_events_fetched = 0
+        total_events_unique = 0
+        total_duplicate_events = 0
         total_events_newer_than_checkpoint = 0
         total_cleared_statistic_ids = 0
         total_corrections_detected = 0
@@ -211,9 +213,13 @@ async def _async_execute_fixture_statistics_import(
             cleared_statistic_ids = int(import_result.get("cleared_statistic_ids", 0))
             corrections_detected = int(import_result.get("corrections_detected", 0))
             cached_events = int(import_result.get("cached_events", 0))
+            events_unique = int(import_result.get("events_unique", events_fetched))
+            duplicate_events = int(import_result.get("duplicate_events", 0))
 
             total_rows += imported
             total_events_fetched += events_fetched
+            total_events_unique += events_unique
+            total_duplicate_events += duplicate_events
             total_events_newer_than_checkpoint += newer_events
             total_cleared_statistic_ids += cleared_statistic_ids
             total_corrections_detected += corrections_detected
@@ -222,6 +228,10 @@ async def _async_execute_fixture_statistics_import(
                     "device_id": device.id,
                     "imported_rows": imported,
                     "events_fetched": events_fetched,
+                    "events_unique": events_unique,
+                    "duplicate_events": duplicate_events,
+                    "chunks_completed": int(import_result.get("chunks_completed", 1)),
+                    "chunks_total": int(import_result.get("chunks_total", 1)),
                     "events_newer_than_checkpoint": newer_events,
                     "checkpoint_before_ms": checkpoint_before,
                     "checkpoint_after_ms": checkpoint_after,
@@ -250,6 +260,9 @@ async def _async_execute_fixture_statistics_import(
             "Imported observations are not proof of complete cloud history. "
             "Corrections use the last observed contribution for each device-scoped event ID; "
             "absent events are retained. Fixture series represent labels, not physical fixture identities."
+            " Requests use sequential seven-day windows with a one-millisecond internal overlap."
+            " events_fetched includes repeated observations; events_unique counts distinct device-scoped IDs."
+            " Live imported_rows counts row writes across chunks; dry runs project the combined final observations."
         )
         if force_reimport and not dry_run:
             note += " Force mode replayed observed events without clearing historical statistics."
@@ -276,6 +289,8 @@ async def _async_execute_fixture_statistics_import(
             "devices": results,
             "total_rows": total_rows,
             "total_events_fetched": total_events_fetched,
+            "total_events_unique": total_events_unique,
+            "total_duplicate_events": total_duplicate_events,
             "total_events_newer_than_checkpoint": total_events_newer_than_checkpoint,
             "total_cleared_statistic_ids": total_cleared_statistic_ids,
             "total_corrections_detected": total_corrections_detected,

@@ -1,6 +1,7 @@
 """Support for Phyn Plus Water Monitor sensors."""
 from __future__ import annotations
 from datetime import datetime, timezone
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from aiophyn.errors import RequestError
@@ -14,6 +15,7 @@ import homeassistant.util.dt as dt_util
 from ..const import LOGGER
 from ..backfill import PhynHistoryBackfill
 from ..fixture_statistics import PhynFixtureStatisticsImporter
+from ..history_import import ImportProgressCallback, async_import_history
 from ..logbook_helpers import async_add_logbook_entry
 from ..entities.base import (
     PhynAlertEvent,
@@ -274,6 +276,8 @@ class PhynPlusDevice(PhynDevice):
         to_datetime: datetime | None = None,
         force_reimport: bool = False,
         dry_run: bool = False,
+        *,
+        progress_callback: ImportProgressCallback | None = None,
     ) -> dict[str, int]:
         """Restore state and serialize manual and recurring fixture imports."""
         async with self._fixture_import_lock:
@@ -283,7 +287,7 @@ class PhynPlusDevice(PhynDevice):
                     raise HomeAssistantError("Phyn fixture imports are stopping")
                 await self._fixture_stats_importer.async_initialize()
                 return await self._async_import_fixture_statistics(
-                    from_datetime, to_datetime, force_reimport, dry_run
+                    from_datetime, to_datetime, force_reimport, dry_run, progress_callback
                 )
             finally:
                 self._coordinator.hass.loop.call_soon(
@@ -300,6 +304,7 @@ class PhynPlusDevice(PhynDevice):
         to_datetime: datetime | None,
         force_reimport: bool,
         dry_run: bool,
+        progress_callback: ImportProgressCallback | None = None,
     ) -> dict[str, int]:
         """Import fixture events for a given time window.
 
@@ -323,20 +328,17 @@ class PhynPlusDevice(PhynDevice):
                 self.configured_fixture_categories
             )
 
-        events = await self._coordinator.api_client.device.get_water_usage_events(
-            self._phyn_device_id,
-            from_ts=int(from_dt.timestamp() * 1000),
-            to_ts=int(to_dt.timestamp() * 1000),
+        return await async_import_history(
+            self._coordinator.hass,
+            self._fixture_stats_importer,
+            partial(
+                self._coordinator.api_client.device.get_water_usage_events,
+                self._phyn_device_id,
+            ),
+            int(from_dt.timestamp() * 1000), int(to_dt.timestamp() * 1000),
+            force_reimport=force_reimport, dry_run=dry_run,
+            progress_callback=progress_callback,
         )
-
-        if dry_run:
-            return await self._fixture_stats_importer.async_preview_import_events(
-                events,
-                force_reimport=force_reimport,
-            )
-        if force_reimport:
-            return await self._fixture_stats_importer.async_force_reimport_events(events)
-        return await self._fixture_stats_importer.async_import_events(events)
 
     async def _update_fixture_statistics(self) -> None:
         """Fetch fixture usage events and import into HA long-term statistics."""

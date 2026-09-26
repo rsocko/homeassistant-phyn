@@ -111,6 +111,11 @@ class PhynHistoryBackfill:
                     start_datetime=start.isoformat(), end_datetime=end.isoformat(),
                     started_at=end.isoformat(), finished_at=None, error=None,
                     imported_rows=None, events_fetched=None, corrections_detected=None,
+                    chunks_total=0, chunks_completed=0, events_unique=0, duplicate_events=0,
+                    remaining_start_ms=int(start.timestamp() * 1000),
+                    remaining_end_ms=int(end.timestamp() * 1000),
+                    remaining_start_datetime=start.isoformat(),
+                    remaining_end_datetime=end.isoformat(),
                 )
             except OSError as err:
                 raise HomeAssistantError("Could not save Phyn backfill request") from err
@@ -129,6 +134,7 @@ class PhynHistoryBackfill:
         try:
             result = await self.device.async_import_fixture_statistics(
                 from_datetime=start, to_datetime=end,
+                progress_callback=self._async_report_progress,
             )
             finished = dt_util.utcnow().isoformat()
             await self._async_update(
@@ -159,6 +165,17 @@ class PhynHistoryBackfill:
                 )
             self._task = None
             async_dispatcher_send(self.hass, self.signal)
+
+    async def _async_report_progress(self, progress: dict[str, int]) -> None:
+        await self._async_update(
+            **progress,
+            remaining_start_datetime=datetime.fromtimestamp(
+                progress["remaining_start_ms"] / 1000, dt_util.UTC
+            ).isoformat(),
+            remaining_end_datetime=datetime.fromtimestamp(
+                progress["remaining_end_ms"] / 1000, dt_util.UTC
+            ).isoformat(),
+        )
 
     async def _async_record_failure(self, status: str, message: str) -> None:
         changes = {

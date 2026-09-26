@@ -13,7 +13,7 @@ leak_test:
 
 import_fixture_statistics:
   name: Import fixture statistics
-  description: Import fixture water usage events into Home Assistant long-term statistics. One logical API request covers the whole range; automatic chunking is not implemented. For long pulls, run smaller explicit date ranges sequentially and check each result.
+  description: Import fixture water usage events in sequential seven-day chunks with a one-millisecond internal overlap. Each chunk is verified before continuing. Failures preserve earlier chunks and report the remaining range; no automatic retry. Dry runs preview combined observations without writes. Cloud completeness is not guaranteed.
   fields:
     entity_id:
       name: Entity
@@ -66,7 +66,7 @@ import_fixture_statistics:
 
 reload_fixture_statistics:
   name: Reload corrected fixture statistics
-  description: Reconcile last-observed event corrections while preserving unrelated history; cloud completeness is not guaranteed. One logical API request covers the whole range; automatic chunking is not implemented. For long pulls, run smaller explicit date ranges sequentially and check each result.
+  description: Reconcile last-observed corrections in sequential seven-day chunks with a one-millisecond internal overlap, preserving unrelated history. Failures retain earlier verified chunks and report the remaining range; no automatic retry. Dry runs preview combined observations without writes. Cloud completeness is not guaranteed.
   fields:
     entity_id:
       name: Entity

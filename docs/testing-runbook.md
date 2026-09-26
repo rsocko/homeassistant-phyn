@@ -251,11 +251,52 @@ complete returned history. The 365-day limit is an arbitrarily chosen local
 guard for the day selector, not a discovered SDK/API maximum or proven safe
 request size; explicit date ranges have no equivalent cap.
 
-For long pulls, prefer bounded sequential chunks using explicit date ranges,
-checking each result before proceeding and stopping on errors. This is an
-operational recommendation, **not implemented automatic chunking**: the current
-importer sends the selected range in one logical API request, and the SDK does
-not paginate it. Successful chunks still do not prove cloud completeness.
+The shared HA import path now automatically uses seven-day nominal chunks,
+adding a one-millisecond overlap before each internal start. Actual later query
+spans can be seven days plus one millisecond. The first/last outer bounds are
+unchanged, no returned event is clipped by timestamp, calls are sequential with
+a one-second inter-chunk pause, and the device lock spans the entire operation.
+The SDK primitive itself remains a single logical GET without pagination.
+Successful chunks still do not prove cloud completeness.
+
+Each non-dry-run chunk uses the existing verified journal/Recorder commit path.
+Identical IDs reconcile idempotently; later changed observations retain the
+existing last-observed correction policy. Contradictory duplicates within one
+response fail. Errors stop later fetches without clearing prior chunks; a
+partially written current chunk may need normal pending recovery. Backfill
+status persists completed chunks and the remaining range, not an automatic
+resume instruction. Explicit retry of the remaining or entire original range
+is safe. No unattended retries/resume are added.
+
+Dry runs validate every chunk, merge the last observation per ID in memory,
+and preview that combined map once against the unchanged ledger. They do not
+register inventory, write Recorder/evidence, recover pending work, or persist
+backfill progress. Their net projected row count need not equal live cumulative
+chunk write counts. `events_fetched` counts all received observations,
+`events_unique` counts distinct IDs, and `duplicate_events` is the difference.
+
+`tests/test_history_chunking.py` compares actual Recorder rows and accepted
+per-ID contributions with a whole-range reference under inclusive/exclusive
+timestamp and open/overlap synthetic filters. It includes exact internal
+boundaries and adjacent milliseconds, distinct IDs at identical timestamps,
+identical duplicates within/across responses, out-of-order responses, events
+crossing boundaries, empty windows, zero volumes, and categories not present in
+positive inventory. It also covers combined dry-run corrections, contradictory
+duplicates, failure after Recorder writes but before the accepted commit,
+restart/retry, force reimport, cancellation, UTC/DST windows, and request pacing.
+These synthetic filters test the client's mechanics, not Phyn's undocumented
+filter contract.
+
+A bounded live comparison on September 26, 2026 used a completed 31-day window
+ending at 00:00 UTC: whole range, five chunks with the same one-millisecond
+overlap, and a repeated whole range. All seven requests succeeded; decoded
+payload maps, ID sets, normalized contributions, and per-category totals matched
+exactly across all three views. There was no before/after drift. No observed
+event was within one millisecond of an internal boundary, so the live comparison
+does not exercise exact boundary duplicates or prove inclusion semantics.
+Private account activity counts, volumes, and IDs are not published. No live
+results were imported into HA. This is sampled equivalence, not proof that either
+request shape contains every event in Phyn's cloud.
 
 A bounded read-only September 26,
 2026 probe on one monitor accepted 1, 7, 31, 90, 365, and 366-day ranges ending at

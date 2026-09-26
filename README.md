@@ -272,7 +272,9 @@ page, under Configuration:
   The job runs in the background without blocking normal sensor refreshes.
 - **History backfill status** (Diagnostic): idle, running, completed, failed,
   or interrupted. Attributes show the requested range, timestamps, fetched
-  events, imported rows, detected corrections, and last successful completion.
+  observations, unique event IDs, repeated observations, imported rows, detected
+  corrections, completed/total chunks, remaining date range, and last successful
+  completion.
 
 The button's own timestamp means **pressed**, not **success**. Check the status
 sensor instead. Completed means the returned observations were processed and
@@ -290,6 +292,30 @@ automatically. The last successful completion survives failures and restarts.
 Interrupted/failed work may have written rows or a recovery journal; a later
 import uses the existing reconciliation/recovery path rather than clearing data.
 
+Large requests from these controls, the existing actions, and recurring imports
+are automatically split into **sequential seven-day nominal windows**, with a
+one-millisecond overlap at each internal boundary and a one-second pause between
+chunks. Each chunk commits through the existing correction-safe importer and
+Recorder readback before the next request. The per-monitor lock covers the whole
+operation. Repeated observations never add a second contribution for an event ID;
+a changed observation in a later response revises the earlier contribution.
+Contradictory duplicates within a single response fail explicitly.
+
+On failure, later chunks are not fetched. Earlier verified chunks remain, and
+the error/status identifies the remaining range. Retry that range through the
+date-based action, or safely repeat the original request. A chunk interrupted
+after writes may have a pending journal; normal retry/recovery handles it.
+There is no automatic retry or resume. Dry runs instead fetch and validate all
+chunks, then preview the combined last-observed event map once, without writing
+statistics, inventory metadata, saved evidence, or backfill progress. Dry runs
+hold that combined event map in memory.
+
+`events_fetched` counts received observations, including overlaps/duplicates;
+`events_unique` counts distinct device-scoped event IDs and `duplicate_events`
+is their difference. Neither counter is a water volume. Live `imported_rows`
+counts writes across chunks (an hour may be rewritten more than once), while a
+dry run reports the net projected rows for the combined final observations.
+
 These controls use the same correction-safe importer as
 `phyn.import_fixture_statistics`; they do not reset statistics, change existing
 IDs, create sensor-generated water statistics, or write to Phyn. Advanced
@@ -303,15 +329,18 @@ monitor. The 366-day response included an additional day's events beyond the
 returned HTTP 504 after about 29 seconds; testing stopped at that server error.
 This was not explicit date/length validation and does not establish a maximum.
 
-The SDK makes one logical history request without pagination or a proven
-completeness/result-cap guarantee. Successful overlapping responses in that
-probe contained the shorter requests' event IDs, but this still does not prove
-complete history or universal retention. Start with a short range; use smaller
-explicit date windows through the existing actions instead of one very large
-request. Run these chunks sequentially, checking each result before continuing;
-stop on errors rather than repeatedly retrying an oversized request. Automatic
-chunking is **not implemented**: the current importer sends the whole selected
-range in one logical API request. The device control retains its arbitrarily
+The SDK method still makes one logical history request without pagination or a
+proven completeness/result-cap guarantee; HA now calls it once per chunk.
+In a separate bounded live comparison, a completed 31-day whole-range response,
+the union of five chunk responses, and a repeated whole-range response had
+identical event ID sets and decoded payloads. There were no missing, extra, or
+changed events in that sample. No event landed within one millisecond of its
+internal boundaries, so synthetic offline HA tests cover boundary duplicates,
+long cross-boundary events, corrections, interrupted commits, and safe retries.
+
+These results establish sampled whole/chunk equivalence, not global completeness,
+universal retention, or a proven server boundary/filter contract. Chunking cannot
+recover events the API never returns. The device control retains its arbitrarily
 chosen 365-day local guard, not a demonstrated safe maximum for every monitor.
 Any further retention investigation should use bounded older known-activity
 windows and repeated/split-window comparisons. An empty old window alone is
