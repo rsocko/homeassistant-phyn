@@ -17,7 +17,7 @@ This integration currently provides the following capabilities:
 
 # Installation via HACS
 
-This fork's opt-in development release is **2026.9.2-beta.4**, requiring
+This fork's opt-in development release is **2026.9.2-beta.5**, requiring
 **Home Assistant 2026.9.3 or newer**. The tested baseline is 2026.9.3, not a
 guarantee for every newer release. It is intended for backed-up development
 instances first, not an automatic production upgrade.
@@ -36,7 +36,7 @@ development wheel. **Do not install aiophyn manually or select the moving
    Enable the entity if disabled, then turn the switch on. Return to HACS and
    select **Update information**.
 4. Choose **Download** or **Redownload**, open **Need a different version?**, and
-   select **v2026.9.2-beta.4** (some UIs omit the `v`).
+   select **v2026.9.2-beta.5** (some UIs omit the `v`).
 5. Restart Home Assistant and verify the installed version before configuring
    Phyn or running the bounded checks in the runbook.
 
@@ -294,7 +294,7 @@ Starting with beta 4, external category statistics include the Phyn home
 name, for example **Phyn Cape - Toilet Water**. This uses the home name from
 Phyn, not a Home Assistant device nickname, and falls back to an identifier if
 the name is unavailable. Reload the integration after renaming a home in Phyn.
-In development after beta 4, the home prefix is shown only when more than one
+Starting with beta 5, the home prefix is shown only when more than one
 category-usage monitor (PP1/PP2) is selected in this HA integration. With one
 selected monitor the name is **Phyn Toilet Water**. Unselected monitors and
 Smart Water Sensors do not affect this rule. If selected monitors have identical

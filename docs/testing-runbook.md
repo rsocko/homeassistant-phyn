@@ -279,7 +279,7 @@ does not automatically select the aiophyn fork. The README's upstream HACS
 distribution does not install this fork's fixture additions. Both integrations
 use domain `phyn`; do not install upstream and this fork side by side.
 
-The opt-in integration prerelease **v2026.9.2-beta.4** selects the public
+The opt-in integration prerelease **v2026.9.2-beta.5** selects the public
 **aiophyn 2026.9.2.dev1** wheel from the fork's **v2026.9.2.dev1** release.
 The exact URL and SHA-256 are recorded in `custom_components/phyn/manifest.json`.
 The library release includes its wheel, source distribution and checksums.
@@ -334,19 +334,19 @@ The operator performs installation and restarts; production remains unchanged.
    **Settings > Devices & services > Entities**, filtered to HACS, including
    disabled entities. Enable the entity if needed, then turn its switch on
    ("Pre-releases preferred"). Return to HACS, select **Update information**,
-   then **Download/Redownload > Need a different version? > v2026.9.2-beta.4**.
+   then **Download/Redownload > Need a different version? > v2026.9.2-beta.5**.
    A UI may omit the leading `v`.
    An installed/latest SHA such as `ff0004b` is the old default branch, not this
    release. If the selected version is absent, stop rather than installing the
    default branch or editing the installed manifest.
-7. Restart HA normally. HACS should report `2026.9.2-beta.4`; HA must not report
+7. Restart HA normally. HACS should report `2026.9.2-beta.5`; HA must not report
    dependency/setup failures. HA installs the exact manifest wheel without a
    separate `pip install`, editable checkout or `--skip-pip` flag.
 8. Configure Phyn in **Settings > Devices & services** only if it is not already
    configured. Normal polling can immediately import usage into the **dev**
    Recorder; a service dry-run does not disable these background imports.
 9. Verify devices/entities and logs. The integration manifest version is
-   `2026.9.2-beta.4`; installed library distribution and `aiophyn.__version__`
+   `2026.9.2-beta.5`; installed library distribution and `aiophyn.__version__`
    must both be `2026.9.2.dev1`, with the manifest URL as installation provenance.
    The manifest checksum is exercised by CI's installer and installed-file checks;
    HA's uv may leave the metadata hash empty. A read-only inspection from the same container Python environment
@@ -365,9 +365,9 @@ The operator performs installation and restarts; production remains unchanged.
     app-based attribution edits separate and deliberate: they modify the real
     account. HA review/editing remains future work (#1/#2 in this repository).
 
-### Beta 4 inventory and Energy coverage checks
+### Beta 5 inventory and Energy coverage checks
 
-Upgrading a working beta 2 or beta 3 installation requires no statistics reset, storage
+Upgrading a working beta 2, beta 3, or beta 4 installation requires no statistics reset, storage
 file changes, or removal/recreation of the Phyn config entry. Historical series
 IDs and the ledger schema are unchanged. The same pinned aiophyn development
 wheel remains in use; this is not a new SDK release.
@@ -388,7 +388,11 @@ not zero counts or a fixture-statistics reset. Do not deliberately mutate the
 real Phyn inventory merely to check this installation.
 
 After the next successful fixture import, check **Developer Tools > Statistics**
-for home-aware names such as **Phyn Cape - Toilet Water**. Existing statistic IDs,
+for **Phyn Toilet Water** with one selected usage monitor, or home-aware names
+such as **Phyn Cape - Toilet Water** with multiple selected PP1/PP2 monitors.
+Unselected monitors and Smart Water Sensors do not count toward this naming
+rule. Identical home names are disambiguated with monitor identifiers.
+Existing statistic IDs,
 usage rows, and Energy selections remain unchanged; custom Energy names can
 override the new display metadata. Positive-count inventory categories become
 selectable external statistics even before usage arrives. These new entries have
