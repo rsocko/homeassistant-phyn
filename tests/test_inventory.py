@@ -217,8 +217,8 @@ async def test_real_registry_defaults_and_enabled_count_state(
         config_entry=entry, suggested_object_id="configured_toilet_count",
         disabled_by=None,
     )
-    with entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS):
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    entry.mock_state(hass, ConfigEntryState.SETUP_IN_PROGRESS)
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     await hass.async_block_till_done()
 
     state = hass.states.get(enabled.entity_id)
