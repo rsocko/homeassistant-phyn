@@ -151,11 +151,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     session = async_get_clientsession(hass)
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN] = {}
+    runtime_data = hass.data.setdefault(DOMAIN, {})
     client_id = f"homeassistant-{hass.data['core.uuid']}-{entry.entry_id}"
     try:
-        hass.data[DOMAIN][CLIENT] = client = await async_get_api(
+        client = await async_get_api(
             entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD],
             phyn_brand="phyn", session=session,
             client_id=client_id
@@ -185,6 +184,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not device_ids:
         # Primary entry has no selected devices.
         _LOGGER.debug("Entry %s has no devices; skipping setup", entry.entry_id)
+        await _async_disconnect_mqtt(client)
         return True
 
     all_account_devices: dict[str, dict] = {}
@@ -229,7 +229,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.warning(
                     "Selected device %s not found in account; skipping", device_id
                 )
-        hass.data[DOMAIN]["coordinator"] = coordinator
+        runtime_data[CLIENT] = client
+        runtime_data["coordinator"] = coordinator
 
         await coordinator.async_refresh()
         await coordinator.async_setup()
@@ -249,6 +250,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is not None:
             await coordinator.async_shutdown()
         await _async_disconnect_mqtt(client)
+        if runtime_data.get(CLIENT) is client:
+            runtime_data.pop(CLIENT, None)
+            runtime_data.pop("coordinator", None)
         raise
 
 

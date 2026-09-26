@@ -14,7 +14,8 @@ from custom_components.phyn.config_flow import (
     _device_label,
     _extract_device_ids,
 )
-from custom_components.phyn.const import CONF_DEVICE_IDS, DOMAIN
+from custom_components.phyn import async_setup_entry, async_unload_entry
+from custom_components.phyn.const import CLIENT, CONF_DEVICE_IDS, DOMAIN
 
 
 HOMES = [
@@ -121,3 +122,32 @@ async def test_reconfigure_keeps_other_home_deselected(hass, monkeypatch):
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_DEVICE_IDS] == ["monitor_a"]
     await hass.async_block_till_done()
+
+
+async def test_migrated_entry_without_selection_unloads_cleanly(hass, monkeypatch):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="test@example.invalid",
+        data={
+            CONF_USERNAME: "test@example.invalid",
+            CONF_PASSWORD: "synthetic",
+            CONF_DEVICE_IDS: [],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.home.get_homes.return_value = deepcopy(HOMES)
+    monkeypatch.setattr(
+        "custom_components.phyn.async_get_api", AsyncMock(return_value=client)
+    )
+    unload_platforms = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        hass.config_entries, "async_unload_platforms", unload_platforms
+    )
+
+    assert await async_setup_entry(hass, entry) is True
+    client.mqtt.disconnect_and_wait.assert_awaited_once()
+    assert CLIENT not in hass.data[DOMAIN]
+
+    assert await async_unload_entry(hass, entry) is True
+    unload_platforms.assert_not_awaited()
