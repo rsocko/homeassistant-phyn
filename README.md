@@ -290,6 +290,20 @@ presentation, not a link between entity History and external statistics.
 
 ### Fixture attribution and review
 
+In development after beta 3, external category statistics include the Phyn home
+name, for example **Phyn Cape - Toilet Water**. This uses the home name from
+Phyn, not a Home Assistant device nickname, and falls back to an identifier if
+the name is unavailable. Reload the integration after renaming a home in Phyn.
+The next successful non-dry-run fixture import refreshes existing display names,
+including categories absent from the latest event batch. Statistic IDs, category
+labels in saved evidence, consumption rows, and Energy selections are preserved.
+Dry runs never rename statistics. An explicit custom name in Energy can still
+override the statistic's display name.
+
+Inventory categories without imported events do not yet get usage statistics.
+Missing history is not measured zero consumption. Energy selections remain
+user-managed; no dashboard entries or Repairs are created automatically.
+
 Review and correct event attribution in the **Phyn app** for now. Home Assistant
 offers aggregate statistics and import/reload previews, not an event attribution
 editor. Future work is tracked separately:

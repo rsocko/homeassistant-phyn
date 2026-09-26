@@ -167,7 +167,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for device in home.get("devices", []):
             all_account_devices[device["device_id"]] = {
                 "home_id": home["id"],
-                "home_name": home.get("name", home["id"]),
+                "home_name": home.get("name") or home["id"],
                 "product_code": device["product_code"],
             }
 
@@ -194,7 +194,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if device_id in all_account_devices:
                 info = all_account_devices[device_id]
                 home_name = info["home_name"] if multi_home else ""
-                coordinator.add_device(info["home_id"], device_id, info["product_code"], home_name)
+                coordinator.add_device(
+                    info["home_id"], device_id, info["product_code"], home_name,
+                    statistics_home_name=info["home_name"],
+                )
             else:
                 _LOGGER.warning(
                     "Selected device %s not found in account; skipping", device_id

@@ -66,6 +66,8 @@ class PhynPlusDevice(PhynDevice):
         device_id: str,
         product_code: str,
         home_name: str = "",
+        *,
+        statistics_home_name: str = "",
     ) -> None:
         """Initialize the device."""
         super().__init__(coordinator, home_id, device_id, product_code, home_name)
@@ -87,6 +89,7 @@ class PhynPlusDevice(PhynDevice):
         self._fixture_stats_importer = PhynFixtureStatisticsImporter(
             coordinator.hass,
             self._phyn_device_id,
+            home_name=statistics_home_name or home_name,
         )
 
         self.entities = [

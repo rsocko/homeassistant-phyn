@@ -429,9 +429,12 @@ def _validate_evidence(state: FixtureStatisticsState) -> None:
 class PhynFixtureStatisticsImporter:
     """Keep local accepted evidence and verify absolute Recorder writes before commit."""
 
-    def __init__(self, hass: HomeAssistant, device_id: str) -> None:
+    def __init__(
+        self, hass: HomeAssistant, device_id: str, *, home_name: str = ""
+    ) -> None:
         self._hass = hass
         self._device_id = device_id
+        self._home_name = home_name.strip() or device_id
         self._store: Store[dict[str, Any]] = Store(
             hass, FIXTURE_STATS_STORE_VERSION, f"{DOMAIN}_fixture_stats_{device_id.lower()}"
         )
@@ -552,7 +555,8 @@ class PhynFixtureStatisticsImporter:
     def _metadata(self, label: str, identifier: str) -> StatisticMetaData:
         return StatisticMetaData(
             mean_type=StatisticMeanType.NONE, has_sum=True,
-            name=f"Phyn {label} Water", source=DOMAIN, statistic_id=identifier,
+            name=f"Phyn {self._home_name} - {label} Water",
+            source=DOMAIN, statistic_id=identifier,
             unit_class=VolumeConverter.UNIT_CLASS, unit_of_measurement=UnitOfVolume.GALLONS,
         )
 
@@ -570,7 +574,8 @@ class PhynFixtureStatisticsImporter:
                 return False
             actual_metadata = meta[1]
             wanted = self._metadata(label, identifier)
-            if any(actual_metadata.get(key) != wanted[key] for key in wanted):
+            # Display names may change without changing accepted usage evidence.
+            if any(actual_metadata.get(key) != wanted[key] for key in wanted if key != "name"):
                 return False
             if not expected:
                 continue
@@ -588,6 +593,38 @@ class PhynFixtureStatisticsImporter:
             ):
                 return False
         return True
+
+    async def _refresh_names(self) -> None:
+        """Update owned display metadata without writing consumption rows."""
+        if not self._state.fixture_ids:
+            return
+        recorder = get_instance(self._hass)
+        wanted = {
+            identifier: self._metadata(label, identifier)
+            for label, identifier in self._state.fixture_ids.items()
+        }
+
+        async def mismatches() -> set[str]:
+            metadata = await recorder.async_add_executor_job(
+                partial(get_metadata, self._hass, statistic_ids=set(wanted))
+            )
+            return {
+                identifier for identifier, expected in wanted.items()
+                if identifier not in metadata
+                or metadata[identifier][1].get("name") != expected["name"]
+            }
+
+        for identifier in await mismatches():
+            # HA upserts metadata even with no statistic rows. IDs stay unchanged.
+            async_add_external_statistics(self._hass, wanted[identifier], [])
+        try:
+            async with timeout(VERIFY_TIMEOUT_SECONDS):
+                while await mismatches():
+                    await sleep(0.05)
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                "Fixture statistic display names could not be verified; retry the import"
+            ) from err
 
     async def _finish_pending(self) -> None:
         pending = self._pending
@@ -654,6 +691,8 @@ class PhynFixtureStatisticsImporter:
                 )
             except (ValueError, TypeError, OverflowError) as err:
                 raise HomeAssistantError(f"Invalid fixture observations: {err}") from err
+            if not dry_run:
+                await self._refresh_names()
             before = self.current_checkpoint_ms()
             merged = self._state.events | plan.updates
             after = max((value["end_ms"] for value in merged.values()), default=0)

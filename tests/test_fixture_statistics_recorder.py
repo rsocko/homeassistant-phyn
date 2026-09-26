@@ -7,6 +7,7 @@ the import, clear, and query APIs below are not replaced with mocks.
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
 import pytest
 from pytest_homeassistant_custom_component.components.recorder.common import (
@@ -16,6 +17,7 @@ from homeassistant.components.recorder.models.statistics import StatisticMeanTyp
 from homeassistant.components.recorder.statistics import (
     StatisticMetaData,
     async_add_external_statistics,
+    get_metadata,
     statistics_during_period,
 )
 from homeassistant.const import UnitOfVolume
@@ -158,6 +160,115 @@ def _event(key, time, volume, label="Kitchen"):
             "suggested_fixtures": [{"fixture_name": label, "confidence_score": 1}]
         },
     }
+
+async def test_home_names_update_without_rewriting_history(hass, recorder_mock, monkeypatch):
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Old home")
+    events = [_event("one", start, 4), _event("two", start, 2, "Toilet")]
+    await importer.async_import_events(events)
+    identifiers = dict(importer._state.fixture_ids)
+    saved = deepcopy(await importer._store.async_load())
+    before = {
+        label: await _read_rows(hass, recorder_mock, start - timedelta(hours=1), identifier)
+        for label, identifier in identifiers.items()
+    }
+    # Simulate a beta 3 display name, then upgrade with the same saved ledger.
+    for label, identifier in identifiers.items():
+        metadata = importer._metadata(label, identifier)
+        metadata["name"] = f"Phyn {label} Water"
+        async_add_external_statistics(hass, metadata, [])
+    await async_recorder_block_till_done(hass)
+    renamed = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await renamed.async_preview_import_events([])
+    metadata = await recorder_mock.async_add_executor_job(
+        partial(get_metadata, hass, statistic_ids=set(identifiers.values()))
+    )
+    assert metadata[identifiers["Kitchen"]][1]["name"] == "Phyn Kitchen Water"
+
+    calls = []
+    original = fixture_module.async_add_external_statistics
+
+    def record_write(hass, metadata, rows):
+        calls.append((metadata["statistic_id"], rows))
+        original(hass, metadata, rows)
+
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", record_write)
+    result = await renamed.async_import_events([])
+    assert result["imported_rows"] == 0
+    assert len(calls) == 2
+    assert all(rows == [] for _, rows in calls)
+    assert await renamed._store.async_load() == saved
+    metadata = await recorder_mock.async_add_executor_job(
+        partial(get_metadata, hass, statistic_ids=set(identifiers.values()))
+    )
+    for label, identifier in identifiers.items():
+        assert metadata[identifier][1]["name"] == f"Phyn Cape - {label} Water"
+        assert await _read_rows(
+            hass, recorder_mock, start - timedelta(hours=1), identifier
+        ) == before[label]
+    calls.clear()
+    await renamed.async_import_events(events)
+    assert calls == []
+
+
+async def test_home_rename_does_not_bypass_evidence_checks(hass, recorder_mock):
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await importer.async_import_events([_event("one", start, 4)])
+    identifier = fixture_statistic_id("device", "Kitchen")
+    async_add_external_statistics(
+        hass, importer._metadata("Kitchen", identifier),
+        [{"start": start, "sum": 99.0, "state": 99.0}],
+    )
+    await async_recorder_block_till_done(hass)
+    renamed = PhynFixtureStatisticsImporter(hass, "device", home_name="NTK")
+    with pytest.raises(HomeAssistantError, match="differ from saved evidence"):
+        await renamed.async_import_events([])
+    metadata = await recorder_mock.async_add_executor_job(
+        partial(get_metadata, hass, statistic_ids={identifier})
+    )
+    assert metadata[identifier][1]["name"] == "Phyn Cape - Kitchen Water"
+
+
+async def test_home_rename_failure_retries_without_changing_ledger(
+    hass, recorder_mock, monkeypatch
+):
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await importer.async_import_events([_event("one", start, 4)])
+    saved = deepcopy(await importer._store.async_load())
+    renamed = PhynFixtureStatisticsImporter(hass, "device", home_name="NTK")
+    original = fixture_module.async_add_external_statistics
+    monkeypatch.setattr(fixture_module, "VERIFY_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", lambda *_: None)
+    with pytest.raises(HomeAssistantError, match="display names could not be verified"):
+        await renamed.async_import_events([])
+    assert await renamed._store.async_load() == saved
+    assert renamed._blocked_reason is None
+    monkeypatch.setattr(fixture_module, "async_add_external_statistics", original)
+    monkeypatch.setattr(fixture_module, "VERIFY_TIMEOUT_SECONDS", 20)
+    await renamed.async_import_events([])
+    assert await renamed._store.async_load() == saved
+
+
+async def test_pending_history_recovers_across_home_rename(hass, recorder_mock):
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    importer = PhynFixtureStatisticsImporter(hass, "device", home_name="Cape")
+    await importer.async_import_events([_event("one", start, 4)])
+    plan, _ = fixture_module._plan(
+        importer._state, [_event("one", start, 6)], "device", False
+    )
+    await importer._save(importer._state, plan)
+    restored = PhynFixtureStatisticsImporter(hass, "device", home_name="NTK")
+    await restored.async_import_events([])
+    identifier = fixture_statistic_id("device", "Kitchen")
+    rows = await _read_rows(hass, recorder_mock, start, identifier)
+    assert [row["sum"] for row in rows] == [6]
+    assert restored._pending is None
+    metadata = await recorder_mock.async_add_executor_job(
+        partial(get_metadata, hass, statistic_ids={identifier})
+    )
+    assert metadata[identifier][1]["name"] == "Phyn NTK - Kitchen Water"
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,30 @@ from custom_components.phyn.devices.pp import PhynPlusDevice
 from custom_components.phyn.fixture_statistics import PhynFixtureStatisticsImporter
 from custom_components.phyn import async_unload_entry
 from custom_components.phyn.const import CLIENT, DOMAIN
+from custom_components.phyn.update_coordinator import PhynDataUpdateCoordinator
+
+
+async def test_single_home_name_reaches_statistics_without_renaming_device(hass):
+    coordinator = PhynDataUpdateCoordinator(
+        hass, SimpleNamespace(), SimpleNamespace(options={})
+    )
+    coordinator.add_device(
+        "home", "device", "PP1", statistics_home_name="Cape"
+    )
+    device = coordinator.devices[0]
+    assert device._phyn_home_name == ""
+    assert device._fixture_stats_importer._metadata("Toilet", "phyn:test")["name"] == (
+        "Phyn Cape - Toilet Water"
+    )
+
+
+async def test_statistics_names_distinguish_homes_and_have_identifier_fallback(hass):
+    first = PhynFixtureStatisticsImporter(hass, "device_a", home_name="Cape")
+    second = PhynFixtureStatisticsImporter(hass, "device_b", home_name="NTK")
+    unnamed = PhynFixtureStatisticsImporter(hass, "device_c", home_name=" ")
+    assert first._metadata("Toilet", "phyn:a")["name"] == "Phyn Cape - Toilet Water"
+    assert second._metadata("Toilet", "phyn:b")["name"] == "Phyn NTK - Toilet Water"
+    assert unnamed._metadata("Toilet", "phyn:c")["name"] == "Phyn device_c - Toilet Water"
 
 
 @pytest.mark.asyncio
