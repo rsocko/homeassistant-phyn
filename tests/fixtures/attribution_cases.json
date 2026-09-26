@@ -37,7 +37,7 @@
     "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
   },
   {
-    "name": "unknown-metadata-only-is-not-category-selection",
+    "name": "unknown-metadata-is-not-category-selection",
     "event": {"total_flow": 2, "latest_user_feedback": {"unknown_metadata": 12}, "latest_suggested_fixtures_result": {"suggested_fixtures": [{"fixture_id": 7, "fixture_name": "Sink", "confidence_score": 0.8}]}},
     "expected": {"attributed_fixture": "Sink", "attribution_source": "prediction", "review_reasons": ["feedback_without_fixture_selection"]}
   },
